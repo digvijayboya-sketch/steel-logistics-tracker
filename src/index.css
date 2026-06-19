@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+:root {
+  --color-bg: #f6f8fb;
+  --color-surface: #ffffff;
+  --color-surface-border: #d7dde6;
+  --color-surface-divider: #edf1f5;
+  --color-surface-bg: #f8fafc;
+  --color-ink: #0f172a;
+  --color-ink-muted: #475569;
+  --color-ink-faint: #94a3b8;
+  --color-primary: #0f766e;
+  --color-primary-dark: #115e59;
+  --color-primary-light: #ccfbf1;
+  --color-success: #15803d;
+  --color-warning: #b45309;
+  --color-error: #b91c1c;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 8px 20px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 18px 40px rgba(15, 23, 42, 0.12);
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+a { color: inherit; text-decoration: none; }
+button { cursor: pointer; }
+input, select, textarea, button { font: inherit; }
+
+.page-title { @apply text-2xl font-bold tracking-tight text-slate-900; }
+.card { @apply rounded-2xl border bg-white shadow-sm; border-color: var(--color-surface-border); }
+.tabular { font-variant-numeric: tabular-nums; }
+.fade-in { animation: fade .25s ease-out; }
+.slide-up { animation: slideUp .28s ease-out; }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
