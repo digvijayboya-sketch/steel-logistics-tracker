@@ -1,145 +1,221 @@
+/**
+ * dataStore.ts – Zustand store that talks to Supabase via api.ts.
+ * The store is the single source of truth for UI state; Supabase is the
+ * source of truth for persistence. On each fetch the store is refreshed.
+ */
 import { create } from 'zustand'
 import {
-  DEMO_DOS, DEMO_JOBS, DEMO_EXPENSES, DEMO_QUEUE,
-  DEMO_DELIVERIES, DEMO_SUPPLIERS, DEMO_SERVICE_CENTRES, DEMO_CUSTOMERS, DEMO_PROFILES
-} from '@/lib/demoData'
+  apiGetSuppliers, apiGetServiceCentres, apiGetCustomers, apiGetAgents,
+  apiGetDOs, apiGetDO, apiCreateDO, apiUpdateDOStatus,
+  apiGetJobs, apiGetJob, apiCreateJob, apiUpdateJobStatus,
+  apiGetQueueUpdates, apiAddQueueUpdate, apiUpdateQueueEntry,
+  apiGetExpenses, apiAddExpense, apiReviewExpense,
+  apiGetDeliveries, apiAddDelivery,
+} from '@/lib/api'
 import type {
   DeliveryOrder, Job, Expense, QueueUpdate, Delivery,
-  DOStatus, JobStatus, ExpenseStatus, Supplier, ServiceCentre, Customer, Profile
+  DOStatus, JobStatus, ExpenseStatus, Supplier, ServiceCentre, Customer, Profile,
 } from '@/types'
 
-interface AuditEntry {
-  id: string
-  entity: string
-  entity_id: string
-  field: string
-  old_value: string
-  new_value: string
-  changed_by: string
-  changed_at: string
-}
+interface LoadingState { [key: string]: boolean }
 
 interface DataState {
-  // master data
-  suppliers: Supplier[]
+  // ── Master data ────────────────────────────────────────────
+  suppliers:      Supplier[]
   serviceCentres: ServiceCentre[]
-  customers: Customer[]
-  profiles: Profile[]
+  customers:      Customer[]
+  profiles:       Profile[]     // agents list
 
-  // transactional data
-  dos: DeliveryOrder[]
-  jobs: Job[]
-  expenses: Expense[]
+  // ── Transactional data ─────────────────────────────────────
+  dos:          DeliveryOrder[]
+  jobs:         Job[]
+  expenses:     Expense[]
   queueUpdates: QueueUpdate[]
-  deliveries: Delivery[]
-  auditLog: AuditEntry[]
+  deliveries:   Delivery[]
 
-  // DO actions
-  addDO: (do_: DeliveryOrder) => void
-  updateDOStatus: (id: string, status: DOStatus, changedBy: string) => void
+  // ── Loading / error flags ──────────────────────────────────
+  loading: LoadingState
+  error:   string | null
 
-  // Job actions
-  addJob: (job: Job) => void
-  updateJobStatus: (id: string, status: JobStatus, changedBy: string) => void
+  // ── Fetch actions ──────────────────────────────────────────
+  fetchLookups:      () => Promise<void>
+  fetchDOs:          () => Promise<void>
+  fetchDO:           (id: string) => Promise<void>
+  fetchJobs:         () => Promise<void>
+  fetchJob:          (id: string) => Promise<void>
+  fetchQueueUpdates: () => Promise<void>
+  fetchExpenses:     () => Promise<void>
+  fetchDeliveries:   () => Promise<void>
 
-  // Expense actions
-  addExpense: (expense: Expense) => void
-  reviewExpense: (id: string, status: ExpenseStatus, notes: string, reviewedBy: string) => void
-
-  // Queue actions
-  addQueueUpdate: (entry: QueueUpdate) => void
-  updateQueueEntry: (id: string, patch: Partial<QueueUpdate>) => void
-
-  // Delivery actions
-  addDelivery: (delivery: Delivery) => void
-
-  // Audit helper
-  _audit: (entry: Omit<AuditEntry, 'id' | 'changed_at'>) => void
+  // ── Mutation actions ───────────────────────────────────────
+  createDO:         (payload: Parameters<typeof apiCreateDO>[0])         => Promise<string>
+  updateDOStatus:   (id: string, status: DOStatus,   userId: string)     => Promise<void>
+  createJob:        (payload: Parameters<typeof apiCreateJob>[0])        => Promise<string>
+  updateJobStatus:  (id: string, status: JobStatus,  userId: string)     => Promise<void>
+  addQueueUpdate:   (payload: Parameters<typeof apiAddQueueUpdate>[0])   => Promise<void>
+  updateQueueEntry: (id: string, patch: Parameters<typeof apiUpdateQueueEntry>[1]) => Promise<void>
+  addExpense:       (payload: Parameters<typeof apiAddExpense>[0])       => Promise<void>
+  reviewExpense:    (id: string, status: ExpenseStatus, notes: string, userId: string) => Promise<void>
+  addDelivery:      (payload: Parameters<typeof apiAddDelivery>[0])      => Promise<void>
 }
 
-const uid = () => Math.random().toString(36).slice(2, 10)
+const setLoading = (key: string, val: boolean) =>
+  (s: DataState): Partial<DataState> => ({ loading: { ...s.loading, [key]: val } })
 
 export const useDataStore = create<DataState>((set, get) => ({
-  suppliers: DEMO_SUPPLIERS,
-  serviceCentres: DEMO_SERVICE_CENTRES,
-  customers: DEMO_CUSTOMERS,
-  profiles: DEMO_PROFILES,
+  suppliers:      [],
+  serviceCentres: [],
+  customers:      [],
+  profiles:       [],
+  dos:            [],
+  jobs:           [],
+  expenses:       [],
+  queueUpdates:   [],
+  deliveries:     [],
+  loading:        {},
+  error:          null,
 
-  dos: DEMO_DOS,
-  jobs: DEMO_JOBS,
-  expenses: DEMO_EXPENSES,
-  queueUpdates: DEMO_QUEUE,
-  deliveries: DEMO_DELIVERIES,
-  auditLog: [],
-
-  _audit: (entry) => set(s => ({
-    auditLog: [...s.auditLog, { ...entry, id: uid(), changed_at: new Date().toISOString() }]
-  })),
-
-  addDO: (do_) => {
-    set(s => ({ dos: [...s.dos, do_] }))
-    get()._audit({ entity: 'DeliveryOrder', entity_id: do_.id, field: 'status', old_value: '', new_value: do_.status, changed_by: do_.id })
+  // ── Fetch lookups ──────────────────────────────────────────
+  fetchLookups: async () => {
+    set(setLoading('lookups', true))
+    try {
+      const [suppliers, serviceCentres, customers, profiles] = await Promise.all([
+        apiGetSuppliers(), apiGetServiceCentres(), apiGetCustomers(), apiGetAgents(),
+      ])
+      set({ suppliers, serviceCentres, customers, profiles })
+    } catch (e: unknown) {
+      set({ error: e instanceof Error ? e.message : 'Failed to load lookups' })
+    } finally {
+      set(setLoading('lookups', false))
+    }
   },
 
-  updateDOStatus: (id, status, changedBy) => set(s => {
-    const old = s.dos.find(d => d.id === id)?.status ?? ''
-    get()._audit({ entity: 'DeliveryOrder', entity_id: id, field: 'status', old_value: old, new_value: status, changed_by: changedBy })
-    return { dos: s.dos.map(d => d.id === id ? { ...d, status } : d) }
-  }),
+  // ── Fetch DOs ─────────────────────────────────────────────
+  fetchDOs: async () => {
+    set(setLoading('dos', true))
+    try {
+      const dos = await apiGetDOs() as unknown as DeliveryOrder[]
+      set({ dos })
+    } catch (e: unknown) {
+      set({ error: e instanceof Error ? e.message : 'Failed to load DOs' })
+    } finally {
+      set(setLoading('dos', false))
+    }
+  },
 
-  addJob: (job) => {
+  fetchDO: async (id) => {
+    set(setLoading(`do_${id}`, true))
+    try {
+      const do_ = await apiGetDO(id) as unknown as DeliveryOrder
+      set(s => ({ dos: s.dos.some(d => d.id === id) ? s.dos.map(d => d.id === id ? do_ : d) : [...s.dos, do_] }))
+    } catch (e: unknown) {
+      set({ error: e instanceof Error ? e.message : 'Failed to load DO' })
+    } finally {
+      set(setLoading(`do_${id}`, false))
+    }
+  },
+
+  // ── Fetch Jobs ─────────────────────────────────────────────
+  fetchJobs: async () => {
+    set(setLoading('jobs', true))
+    try {
+      const jobs = await apiGetJobs() as unknown as Job[]
+      set({ jobs })
+    } catch (e: unknown) {
+      set({ error: e instanceof Error ? e.message : 'Failed to load jobs' })
+    } finally {
+      set(setLoading('jobs', false))
+    }
+  },
+
+  fetchJob: async (id) => {
+    set(setLoading(`job_${id}`, true))
+    try {
+      const job = await apiGetJob(id) as unknown as Job
+      set(s => ({ jobs: s.jobs.some(j => j.id === id) ? s.jobs.map(j => j.id === id ? job : j) : [...s.jobs, job] }))
+    } catch (e: unknown) {
+      set({ error: e instanceof Error ? e.message : 'Failed to load job' })
+    } finally {
+      set(setLoading(`job_${id}`, false))
+    }
+  },
+
+  // ── Fetch Queue, Expenses, Deliveries ─────────────────────
+  fetchQueueUpdates: async () => {
+    set(setLoading('queue', true))
+    try { set({ queueUpdates: await apiGetQueueUpdates() as unknown as QueueUpdate[] }) }
+    catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
+    finally { set(setLoading('queue', false)) }
+  },
+
+  fetchExpenses: async () => {
+    set(setLoading('expenses', true))
+    try { set({ expenses: await apiGetExpenses() as unknown as Expense[] }) }
+    catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
+    finally { set(setLoading('expenses', false)) }
+  },
+
+  fetchDeliveries: async () => {
+    set(setLoading('deliveries', true))
+    try { set({ deliveries: await apiGetDeliveries() as unknown as Delivery[] }) }
+    catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
+    finally { set(setLoading('deliveries', false)) }
+  },
+
+  // ── Mutation: DOs ──────────────────────────────────────────
+  createDO: async (payload) => {
+    const row = await apiCreateDO(payload)
+    await get().fetchDOs()
+    return row.id
+  },
+
+  updateDOStatus: async (id, status, userId) => {
+    await apiUpdateDOStatus(id, status, userId)
+    set(s => ({ dos: s.dos.map(d => d.id === id ? { ...d, status } : d) }))
+  },
+
+  // ── Mutation: Jobs ─────────────────────────────────────────
+  createJob: async (payload) => {
+    const row = await apiCreateJob(payload)
+    await get().fetchJobs()
+    return row.id
+  },
+
+  updateJobStatus: async (id, status, userId) => {
+    await apiUpdateJobStatus(id, status, userId)
+    set(s => ({ jobs: s.jobs.map(j => j.id === id ? { ...j, status } : j) }))
+  },
+
+  // ── Mutation: Queue ────────────────────────────────────────
+  addQueueUpdate: async (payload) => {
+    await apiAddQueueUpdate(payload)
+    await get().fetchQueueUpdates()
+  },
+
+  updateQueueEntry: async (id, patch) => {
+    await apiUpdateQueueEntry(id, patch)
+    set(s => ({ queueUpdates: s.queueUpdates.map(q => q.id === id ? { ...q, ...patch } : q) }))
+  },
+
+  // ── Mutation: Expenses ─────────────────────────────────────
+  addExpense: async (payload) => {
+    await apiAddExpense(payload)
+    await get().fetchExpenses()
+  },
+
+  reviewExpense: async (id, status, notes, userId) => {
+    await apiReviewExpense(id, status, notes, userId)
     set(s => ({
-      jobs: [...s.jobs, job],
-      dos: s.dos.map(d => d.id === job.do_id ? { ...d, status: 'active' as DOStatus } : d)
-    }))
-    get()._audit({ entity: 'Job', entity_id: job.id, field: 'status', old_value: '', new_value: job.status, changed_by: job.id })
-  },
-
-  updateJobStatus: (id, status, changedBy) => set(s => {
-    const old = s.jobs.find(j => j.id === id)?.status ?? ''
-    get()._audit({ entity: 'Job', entity_id: id, field: 'status', old_value: old, new_value: status, changed_by: changedBy })
-    return { jobs: s.jobs.map(j => j.id === id ? { ...j, status } : j) }
-  }),
-
-  addExpense: (expense) => {
-    set(s => ({ expenses: [...s.expenses, expense] }))
-    get()._audit({ entity: 'Expense', entity_id: expense.id, field: 'status', old_value: '', new_value: 'pending', changed_by: expense.logged_by })
-  },
-
-  reviewExpense: (id, status, notes, reviewedBy) => set(s => {
-    const old = s.expenses.find(e => e.id === id)?.status ?? ''
-    get()._audit({ entity: 'Expense', entity_id: id, field: 'status', old_value: old, new_value: status, changed_by: reviewedBy })
-    return {
       expenses: s.expenses.map(e => e.id === id
-        ? { ...e, status, review_notes: notes, reviewed_by: reviewedBy, reviewed_at: new Date().toISOString() }
+        ? { ...e, status, review_notes: notes, reviewed_by: userId, reviewed_at: new Date().toISOString() }
         : e
       )
-    }
-  }),
-
-  addQueueUpdate: (entry) => {
-    set(s => ({
-      queueUpdates: [...s.queueUpdates, entry],
-      jobs: s.jobs.map(j => j.id === entry.job_id
-        ? { ...j, status: 'at_service_centre' as JobStatus, queue_updates: [...(j.queue_updates ?? []), entry] }
-        : j
-      )
     }))
-    get()._audit({ entity: 'QueueUpdate', entity_id: entry.id, field: 'checkin', old_value: '', new_value: entry.checkin_time, changed_by: entry.logged_by })
   },
 
-  updateQueueEntry: (id, patch) => set(s => ({
-    queueUpdates: s.queueUpdates.map(q => q.id === id ? { ...q, ...patch } : q)
-  })),
-
-  addDelivery: (delivery) => {
-    set(s => ({
-      deliveries: [...s.deliveries, delivery],
-      jobs: s.jobs.map(j => j.id === delivery.job_id
-        ? { ...j, status: 'delivered' as JobStatus, deliveries: [...(j.deliveries ?? []), delivery] }
-        : j
-      )
-    }))
-    get()._audit({ entity: 'Delivery', entity_id: delivery.id, field: 'status', old_value: '', new_value: delivery.delivery_status, changed_by: delivery.created_by })
+  // ── Mutation: Deliveries ───────────────────────────────────
+  addDelivery: async (payload) => {
+    await apiAddDelivery(payload)
+    await get().fetchDeliveries()
   },
 }))

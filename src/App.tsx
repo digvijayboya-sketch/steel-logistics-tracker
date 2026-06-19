@@ -19,7 +19,17 @@ import { LogDeliveryPage } from '@/pages/LogDeliveryPage'
 import { ReportsPage } from '@/pages/ReportsPage'
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user } = useAuthStore()
+  const { user, loading } = useAuthStore()
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-steel-600 border-t-transparent" />
+          <p className="text-sm text-gray-500">Loading session…</p>
+        </div>
+      </div>
+    )
+  }
   return user ? <>{children}</> : <Navigate to="/login" replace />
 }
 
@@ -31,26 +41,20 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<DashboardPage />} />
-          {/* DO routes */}
-          <Route path="dos" element={<DOListPage />} />
-          <Route path="dos/new" element={<CreateDOPage />} />
-          <Route path="dos/:id" element={<DODetailPage />} />
-          {/* Job routes */}
-          <Route path="jobs" element={<JobsListPage />} />
-          <Route path="jobs/new" element={<CreateJobPage />} />
-          <Route path="jobs/:id" element={<JobDetailPage />} />
-          {/* Queue routes */}
-          <Route path="queue" element={<QueuePage />} />
-          <Route path="queue/log" element={<LogQueuePage />} />
-          {/* Expense routes */}
-          <Route path="expenses" element={<ExpensesPage />} />
+          <Route path="dashboard"    element={<DashboardPage />} />
+          <Route path="dos"          element={<DOListPage />} />
+          <Route path="dos/new"      element={<CreateDOPage />} />
+          <Route path="dos/:id"      element={<DODetailPage />} />
+          <Route path="jobs"         element={<JobsListPage />} />
+          <Route path="jobs/new"     element={<CreateJobPage />} />
+          <Route path="jobs/:id"     element={<JobDetailPage />} />
+          <Route path="queue"        element={<QueuePage />} />
+          <Route path="queue/log"    element={<LogQueuePage />} />
+          <Route path="expenses"     element={<ExpensesPage />} />
           <Route path="expenses/log" element={<LogExpensePage />} />
-          {/* Delivery routes */}
-          <Route path="deliveries" element={<DeliveriesPage />} />
+          <Route path="deliveries"   element={<DeliveriesPage />} />
           <Route path="deliveries/log" element={<LogDeliveryPage />} />
-          {/* Reports */}
-          <Route path="reports" element={<ReportsPage />} />
+          <Route path="reports"      element={<ReportsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

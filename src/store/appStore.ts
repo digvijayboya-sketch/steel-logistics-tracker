@@ -1,29 +1,99 @@
 import { create } from 'zustand'
+import { supabase } from '@/lib/supabase'
+import { apiGetProfile, apiSignIn, apiSignOut } from '@/lib/api'
 import type { UserRole } from '@/types'
 
-interface User { id:string; name:string; email:string; role:UserRole }
-interface AuthState {
-  user: User | null
-  login: (email:string, password:string)=>boolean
-  logout: ()=>void
+export interface AuthUser {
+  id:    string
+  name:  string
+  email: string
+  role:  UserRole
 }
 
-const DEMO_USERS: (User & { password:string })[] = [
-  { id:'u1', name:'Amit Kulkarni', email:'admin@steelco.in', role:'admin', password:'admin123' },
-  { id:'u2', name:'Priya Shah', email:'purchase@steelco.in', role:'purchase', password:'steel123' },
-  { id:'u3', name:'Rohan Jagtap', email:'planner@steelco.in', role:'planner', password:'steel123' },
-  { id:'u4', name:'Mahesh Patil', email:'agent1@steelco.in', role:'agent', password:'agent123' },
-  { id:'u5', name:'Sandeep More', email:'agent2@steelco.in', role:'agent', password:'agent123' },
-]
+interface AuthState {
+  user:      AuthUser | null
+  loading:   boolean
+  login:     (email: string, password: string) => Promise<{ error?: string }>
+  logout:    () => Promise<void>
+  init:      () => Promise<void>         // called once on app mount
+}
 
 export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  login: (email, password) => {
-    const found = DEMO_USERS.find(u => u.email === email && u.password === password)
-    if (!found) return false
-    const { password: _, ...user } = found
-    set({ user })
-    return true
+  user:    null,
+  loading: true,
+
+  // ── Bootstrap: restore session from Supabase on page load ──
+  init: async () => {
+    set({ loading: true })
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) {
+        const profile = await apiGetProfile(session.user.id)
+        set({
+          user: {
+            id:    profile.id,
+            name:  profile.full_name,
+            email: session.user.email ?? '',
+            role:  profile.role,
+          },
+        })
+      }
+    } catch {
+      // No active session – that's fine
+    } finally {
+      set({ loading: false })
+    }
+
+    // Listen for Supabase auth state changes (token refresh, sign-out)
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        set({ user: null })
+        return
+      }
+      if (event === 'SIGNED_IN' && session.user) {
+        try {
+          const profile = await apiGetProfile(session.user.id)
+          set({
+            user: {
+              id:    profile.id,
+              name:  profile.full_name,
+              email: session.user.email ?? '',
+              role:  profile.role,
+            },
+          })
+        } catch { /* profile not ready yet – handle below */ }
+      }
+    })
   },
-  logout: () => set({ user: null }),
+
+  // ── Sign in ────────────────────────────────────────────────
+  login: async (email, password) => {
+    set({ loading: true })
+    try {
+      const { data, error } = await apiSignIn(email, password)
+      if (error) return { error: error.message }
+      if (!data.user) return { error: 'No user returned' }
+
+      const profile = await apiGetProfile(data.user.id)
+      set({
+        user: {
+          id:    profile.id,
+          name:  profile.full_name,
+          email: data.user.email ?? '',
+          role:  profile.role,
+        },
+      })
+      return {}
+    } catch (e: unknown) {
+      return { error: e instanceof Error ? e.message : 'Login failed' }
+    } finally {
+      set({ loading: false })
+    }
+  },
+
+  // ── Sign out ───────────────────────────────────────────────
+  logout: async () => {
+    await apiSignOut()
+    set({ user: null })
+  },
 }))
