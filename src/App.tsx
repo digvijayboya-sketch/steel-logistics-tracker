@@ -17,6 +17,7 @@ import { LogExpensePage } from '@/pages/LogExpensePage'
 import { DeliveriesPage } from '@/pages/DeliveriesPage'
 import { LogDeliveryPage } from '@/pages/LogDeliveryPage'
 import { ReportsPage } from '@/pages/ReportsPage'
+import { NotFoundPage } from '@/pages/NotFoundPage'
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuthStore()
@@ -41,22 +42,22 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard"    element={<DashboardPage />} />
-          <Route path="dos"          element={<DOListPage />} />
-          <Route path="dos/new"      element={<CreateDOPage />} />
-          <Route path="dos/:id"      element={<DODetailPage />} />
-          <Route path="jobs"         element={<JobsListPage />} />
-          <Route path="jobs/new"     element={<CreateJobPage />} />
-          <Route path="jobs/:id"     element={<JobDetailPage />} />
-          <Route path="queue"        element={<QueuePage />} />
-          <Route path="queue/log"    element={<LogQueuePage />} />
-          <Route path="expenses"     element={<ExpensesPage />} />
-          <Route path="expenses/log" element={<LogExpensePage />} />
-          <Route path="deliveries"   element={<DeliveriesPage />} />
+          <Route path="dashboard"      element={<DashboardPage />} />
+          <Route path="dos"            element={<DOListPage />} />
+          <Route path="dos/new"        element={<CreateDOPage />} />
+          <Route path="dos/:id"        element={<DODetailPage />} />
+          <Route path="jobs"           element={<JobsListPage />} />
+          <Route path="jobs/new"       element={<CreateJobPage />} />
+          <Route path="jobs/:id"       element={<JobDetailPage />} />
+          <Route path="queue"          element={<QueuePage />} />
+          <Route path="queue/log"      element={<LogQueuePage />} />
+          <Route path="expenses"       element={<ExpensesPage />} />
+          <Route path="expenses/log"   element={<LogExpensePage />} />
+          <Route path="deliveries"     element={<DeliveriesPage />} />
           <Route path="deliveries/log" element={<LogDeliveryPage />} />
-          <Route path="reports"      element={<ReportsPage />} />
+          <Route path="reports"        element={<ReportsPage />} />
         </Route>
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
   )
