@@ -6,15 +6,15 @@ interface CardProps {
   className?: string
   padding?: boolean
   onClick?: () => void
-  /** Use 'light' for content on light-bg areas (e.g. modal interiors) */
-  variant?: 'glass' | 'light'
+  lift?: boolean
 }
 
-export const Card = ({ children, className, padding = true, onClick, variant = 'glass' }: CardProps) => (
+export const Card = ({ children, className, padding = true, onClick, lift = false }: CardProps) => (
   <div
     onClick={onClick}
     className={cls(
-      variant === 'light' ? 'card-light' : 'card',
+      'glass',
+      lift && 'glass-lift',
       padding && 'p-5',
       onClick && 'cursor-pointer',
       className
