@@ -220,8 +220,8 @@ export const NotFoundPage = () => {
           <div style={s.big404}>404</div>
           <h1 style={s.errTitle}>Something went wrong</h1>
           <p style={s.errSub}>
-            The page you're looking for isn't in our system.<br />
-            It may have been <span style={{ color: '#2dd4bf', fontWeight: 600 }}>moved, dispatched</span>, or never existed.
+            The page you&apos;re looking for doesn&apos;t exist or is unavailable.
+            Please use the links below to navigate back.
           </p>
 
           {/* Buttons */}
