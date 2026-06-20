@@ -3,14 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
 import { toast } from 'sonner'
 
-/* ─── Demo credentials ──────────────────────────────────────────────────── */
-const QUICK_LOGINS = [
-  { role: 'Admin',    email: 'admin@steelco.in',    password: 'admin123' },
-  { role: 'Planner',  email: 'planner@steelco.in',  password: 'steel123' },
-  { role: 'Purchase', email: 'purchase@steelco.in', password: 'steel123' },
-  { role: 'Agent',    email: 'agent1@steelco.in',   password: 'agent123' },
-]
-
 const FEATURES = [
   { icon: '📋', label: 'DO Management',     desc: 'Full lifecycle from supplier to customer' },
   { icon: '🏭', label: 'SC Queue Tracker',  desc: 'Live service centre status & queue position' },
@@ -44,13 +36,12 @@ export const LoginPage = () => {
   const { login } = useAuthStore()
   const navigate   = useNavigate()
 
-  const [email,      setEmail]      = useState('')
-  const [password,   setPassword]   = useState('')
-  const [showPw,     setShowPw]     = useState(false)
-  const [loading,    setLoading]    = useState(false)
-  const [success,    setSuccess]    = useState(false)
-  const [error,      setError]      = useState('')
-  const [activeRole, setActiveRole] = useState<string | null>(null)
+  const [email,    setEmail]    = useState('')
+  const [password, setPassword] = useState('')
+  const [showPw,   setShowPw]   = useState(false)
+  const [loading,  setLoading]  = useState(false)
+  const [success,  setSuccess]  = useState(false)
+  const [error,    setError]    = useState('')
 
   /* ── Auth logic ── */
   const attemptLogin = (em: string, pw: string) => {
@@ -63,7 +54,7 @@ export const LoginPage = () => {
         setSuccess(true)
         setTimeout(() => navigate('/dashboard'), 600)
       } else {
-        setError('Invalid email or password. Try a quick demo login below.')
+        setError('Invalid email or password.')
         toast.error('Invalid credentials')
       }
     }, 450)
@@ -72,13 +63,6 @@ export const LoginPage = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     attemptLogin(email, password)
-  }
-
-  const quickLogin = (ql: typeof QUICK_LOGINS[0]) => {
-    setActiveRole(ql.role)
-    setEmail(ql.email)
-    setPassword(ql.password)
-    attemptLogin(ql.email, ql.password)
   }
 
   /* ── Styles ── */
@@ -227,32 +211,6 @@ export const LoginPage = () => {
     logoText: { lineHeight: 1 },
     appName: { fontSize: '1.05rem', fontWeight: 700, color: '#f1f5f9' },
     appSub:  { fontSize: '0.72rem', color: 'rgba(241,245,249,.45)', marginTop: 1 },
-    sectionTitle: {
-      fontSize: '0.7rem',
-      fontWeight: 600,
-      letterSpacing: '.07em',
-      textTransform: 'uppercase' as const,
-      color: 'rgba(241,245,249,.35)',
-      marginBottom: '0.6rem',
-    },
-    roleGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(4,1fr)',
-      gap: '0.4rem',
-      marginBottom: '1.5rem',
-    },
-    roleChip: (active: boolean): React.CSSProperties => ({
-      padding: '0.45rem 0',
-      borderRadius: '0.5rem',
-      border: active ? '1px solid rgba(45,212,191,.5)' : '1px solid rgba(255,255,255,.08)',
-      background: active ? 'rgba(45,212,191,.12)' : 'rgba(255,255,255,.04)',
-      color: active ? '#2dd4bf' : 'rgba(241,245,249,.55)',
-      fontSize: '0.72rem',
-      fontWeight: 600,
-      cursor: 'pointer',
-      textAlign: 'center' as const,
-      transition: 'all .18s ease',
-    }),
     label: {
       display: 'block',
       fontSize: '0.75rem',
@@ -314,30 +272,6 @@ export const LoginPage = () => {
       position: 'relative' as const,
       overflow: 'hidden',
     }),
-    divider: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '0.75rem',
-      margin: '1.25rem 0 0.75rem',
-    },
-    divLine: { flex: 1, height: 1, background: 'rgba(255,255,255,.07)' },
-    divText: { fontSize: '0.68rem', color: 'rgba(241,245,249,.28)', whiteSpace: 'nowrap' as const, textTransform: 'uppercase' as const, letterSpacing: '.06em' },
-    demoGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(2,1fr)',
-      gap: '0.45rem',
-    },
-    demoBtn: (active: boolean): React.CSSProperties => ({
-      padding: '0.55rem',
-      borderRadius: '0.6rem',
-      border: active ? '1px solid rgba(45,212,191,.4)' : '1px solid rgba(255,255,255,.07)',
-      background: active ? 'rgba(45,212,191,.08)' : 'rgba(255,255,255,.03)',
-      cursor: 'pointer',
-      textAlign: 'left' as const,
-      transition: 'all .16s',
-    }),
-    demoBtnRole: { fontSize: '0.73rem', fontWeight: 600, color: '#e2e8f0', display: 'block' },
-    demoBtnEmail: { fontSize: '0.65rem', color: 'rgba(241,245,249,.35)', display: 'block', marginTop: 1 },
     footer: {
       textAlign: 'center' as const,
       fontSize: '0.68rem',
@@ -350,16 +284,10 @@ export const LoginPage = () => {
     <>
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
-        @keyframes shimmer {
-          0%{background-position:-200% 0}
-          100%{background-position:200% 0}
-        }
         .login-input:focus {
           border-color: rgba(45,212,191,.55) !important;
           box-shadow: 0 0 0 3px rgba(45,212,191,.1);
         }
-        .role-chip:hover { transform: translateY(-1px); }
-        .demo-btn:hover { transform: translateY(-1px); border-color: rgba(45,212,191,.3) !important; }
         .sign-btn:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(45,212,191,.4) !important; }
         @media (min-width:860px) {
           .login-hero  { display:flex !important; }
@@ -426,22 +354,6 @@ export const LoginPage = () => {
               </div>
             </div>
 
-            {/* Role selector */}
-            <div style={s.sectionTitle}>Sign in as</div>
-            <div style={s.roleGrid}>
-              {QUICK_LOGINS.map(ql => (
-                <button
-                  key={ql.role}
-                  className="role-chip"
-                  style={s.roleChip(activeRole === ql.role)}
-                  onClick={() => quickLogin(ql)}
-                  type="button"
-                >
-                  {ql.role}
-                </button>
-              ))}
-            </div>
-
             {/* Form */}
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
               <div>
@@ -487,31 +399,10 @@ export const LoginPage = () => {
                 {success ? '✓ Redirecting…' : loading ? 'Signing in…' : 'Sign In →'}
               </button>
             </form>
-
-            {/* Quick demo */}
-            <div style={s.divider}>
-              <div style={s.divLine} />
-              <span style={s.divText}>Quick demo access</span>
-              <div style={s.divLine} />
-            </div>
-            <div style={s.demoGrid}>
-              {QUICK_LOGINS.map(ql => (
-                <button
-                  key={ql.role}
-                  className="demo-btn"
-                  style={s.demoBtn(activeRole === ql.role)}
-                  onClick={() => quickLogin(ql)}
-                  type="button"
-                >
-                  <span style={s.demoBtnRole}>{ql.role}</span>
-                  <span style={s.demoBtnEmail}>{ql.email}</span>
-                </button>
-              ))}
-            </div>
           </div>
 
           <div style={s.footer}>
-            Steel Logistics & Dispatch Tracker v1.0 · Demo Mode
+            Steel Logistics & Dispatch Tracker v1.0
           </div>
         </div>
       </div>
