@@ -1,11 +1,14 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
 import { cls } from '@/lib/utils'
 import {
   FileText, Briefcase, Factory,
-  Receipt, Truck, BarChart3, LogOut, X, Sun, Moon
+  Receipt, Truck, BarChart3, LogOut, X, Sun, Moon,
+  TrendingUp, AlertCircle
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
+import { DEMO_DOS, DEMO_JOBS, DEMO_EXPENSES, DEMO_DELIVERIES } from '@/lib/demoData'
+import { formatINR } from '@/lib/utils'
 
 const NAV_ITEMS = [
   { to: '/dos',        label: 'Orders',     icon: FileText,        roles: ['admin','planner','purchase'] },
@@ -15,6 +18,15 @@ const NAV_ITEMS = [
   { to: '/deliveries', label: 'Deliveries', icon: Truck,           roles: ['admin','planner','agent'] },
   { to: '/reports',    label: 'Reports',    icon: BarChart3,       roles: ['admin','planner','purchase'] },
 ]
+
+const KPI_MAP: Record<string, string> = {
+  '/dos':        'dos',
+  '/jobs':       'jobs',
+  '/queue':      'scqueue',
+  '/expenses':   'expenses',
+  '/deliveries': 'deliveries',
+  '/reports':    'reports',
+}
 
 const ROLE_PILL: Record<string, { bg: string; text: string; label: string }> = {
   admin:    { bg: 'rgba(139,92,246,0.25)',  text: '#c4b5fd', label: 'Admin' },
@@ -128,7 +140,7 @@ const SidebarContent = ({
 
       {/* Nav label */}
       <div className="px-4 pt-5 pb-1.5">
-        <span className="section-label">Navigation</span>
+        <span className="section-label">Modules</span>
       </div>
 
       {/* Nav items */}
@@ -164,6 +176,118 @@ const SidebarContent = ({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/* ── Always-visible KPI Dashboard Strip ─────────────────────── */
+const DashboardStrip = ({ user }: { user: any }) => {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const isAgent = user?.role === 'agent'
+
+  const activeDOs       = DEMO_DOS.filter(d => ['active','partially_dispatched'].includes(d.status))
+  const activeJobs      = DEMO_JOBS.filter(j => !['delivered','cancelled'].includes(j.status))
+  const pendingExpenses = DEMO_EXPENSES.filter(e => e.status === 'pending')
+  const deliveriesToday = DEMO_DELIVERIES.length
+
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'
+
+  // determine which KPI is active based on current route
+  const activeKpi = Object.entries(KPI_MAP).find(([path]) =>
+    location.pathname.startsWith(path)
+  )?.[1] ?? null
+
+  const kpis = [
+    { id: 'dos',        val: activeDOs.length,       label: 'Active DOs',        change: '↑ 3 since yesterday', up: true,  path: '/dos' },
+    { id: 'jobs',       val: activeJobs.length,      label: 'Jobs In Progress',  change: '↑ 1 new today',       up: true,  path: '/jobs' },
+    { id: 'expenses',   val: pendingExpenses.length, label: 'Pending Expenses',  change: '↓ 2 approved',        up: false, path: '/expenses' },
+    { id: 'deliveries', val: deliveriesToday,        label: 'Deliveries Today',  change: '↑ 5 completed',       up: true,  path: '/deliveries' },
+    { id: 'scqueue',    val: 3,                      label: 'SC Queue',          change: '● 2 awaiting check-in', up: null, path: '/queue' },
+  ]
+
+  if (isAgent) return null
+
+  return (
+    <div
+      style={{
+        borderBottom: '1px solid var(--gb)',
+        background: 'var(--topbar-bg)',
+        backdropFilter: 'var(--blur-md)',
+        WebkitBackdropFilter: 'var(--blur-md)',
+        flexShrink: 0,
+      }}
+    >
+      {/* Greeting row */}
+      <div style={{ padding: '1rem 1.5rem 0.5rem' }}>
+        <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--tx1)', lineHeight: 1.2 }}>
+          Good {greeting},{' '}
+          <span style={{
+            background: 'linear-gradient(135deg, #2dd4bf, #6366f1)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }}>
+            {user?.name?.split(' ')[0]} 👋
+          </span>
+        </div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--tx3)', marginTop: 2 }}>
+          Live operations overview — click a metric to open that module.
+        </div>
+      </div>
+
+      {/* KPI cards */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(min(150px, 100%), 1fr))',
+        gap: '0.6rem',
+        padding: '0 1.25rem 1rem',
+      }}>
+        {kpis.map(k => {
+          const isActive = activeKpi === k.id
+          return (
+            <button
+              key={k.id}
+              onClick={() => navigate(k.path)}
+              style={{
+                textAlign: 'left',
+                padding: '0.75rem 0.9rem',
+                borderRadius: '0.75rem',
+                background: isActive ? 'rgba(45,212,191,0.10)' : 'var(--g1)',
+                border: isActive ? '1px solid rgba(45,212,191,0.45)' : '1px solid var(--gb)',
+                boxShadow: isActive ? '0 4px 20px rgba(45,212,191,0.14)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.18s',
+                color: 'inherit',
+                fontFamily: 'inherit',
+              }}
+              onMouseEnter={e => {
+                if (!isActive) {
+                  (e.currentTarget as HTMLElement).style.background = 'var(--g2)'
+                  ;(e.currentTarget as HTMLElement).style.borderColor = 'rgba(45,212,191,0.28)'
+                }
+              }}
+              onMouseLeave={e => {
+                if (!isActive) {
+                  (e.currentTarget as HTMLElement).style.background = 'var(--g1)'
+                  ;(e.currentTarget as HTMLElement).style.borderColor = 'var(--gb)'
+                }
+              }}
+            >
+              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#2dd4bf', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+                {k.val}
+              </div>
+              <div style={{ fontSize: '0.63rem', color: 'var(--tx3)', marginTop: 3 }}>{k.label}</div>
+              <div style={{
+                fontSize: '0.6rem', marginTop: 4, fontWeight: 500,
+                color: k.up === true ? '#34d399' : k.up === false ? '#f87171' : '#fbbf24',
+              }}>
+                {k.change}
+              </div>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -260,6 +384,10 @@ export const AppLayout = () => {
           </div>
         </header>
 
+        {/* ── ALWAYS-VISIBLE DASHBOARD KPI STRIP ── */}
+        <DashboardStrip user={user} />
+
+        {/* Page content renders below the dashboard */}
         <main className="flex-1 overflow-y-auto pb-16 lg:pb-0">
           <Outlet />
         </main>

@@ -3,7 +3,6 @@ import { Toaster } from 'sonner'
 import { useAuthStore } from '@/store/appStore'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { LoginPage } from '@/pages/LoginPage'
-import { DashboardPage } from '@/pages/DashboardPage'
 import { DOListPage } from '@/pages/DOListPage'
 import { DODetailPage } from '@/pages/DODetailPage'
 import { CreateDOPage } from '@/pages/CreateDOPage'
@@ -42,7 +41,6 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
           <Route index element={<Navigate to="/dos" replace />} />
-          <Route path="dashboard"      element={<DashboardPage />} />
           <Route path="dos"            element={<DOListPage />} />
           <Route path="dos/new"        element={<CreateDOPage />} />
           <Route path="dos/:id"        element={<DODetailPage />} />
