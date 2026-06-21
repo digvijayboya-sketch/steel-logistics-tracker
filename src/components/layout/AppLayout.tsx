@@ -1,50 +1,46 @@
-import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
-import { cls } from '@/lib/utils'
 import {
   FileText, Briefcase, Factory,
-  Receipt, Truck, BarChart3, LogOut, X, Sun, Moon,
-  TrendingUp, AlertCircle
+  Receipt, Truck, BarChart3, LogOut, X, Sun, Moon, LayoutDashboard
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { DEMO_DOS, DEMO_JOBS, DEMO_EXPENSES, DEMO_DELIVERIES } from '@/lib/demoData'
-import { formatINR } from '@/lib/utils'
 
 const NAV_ITEMS = [
-  { to: '/dos',        label: 'Orders',     icon: FileText,        roles: ['admin','planner','purchase'] },
-  { to: '/jobs',       label: 'Jobs',       icon: Briefcase,       roles: ['admin','planner','agent'] },
-  { to: '/queue',      label: 'SC Queue',   icon: Factory,         roles: ['admin','planner','agent'] },
-  { to: '/expenses',   label: 'Expenses',   icon: Receipt,         roles: ['admin','planner','agent'] },
-  { to: '/deliveries', label: 'Deliveries', icon: Truck,           roles: ['admin','planner','agent'] },
-  { to: '/reports',    label: 'Reports',    icon: BarChart3,       roles: ['admin','planner','purchase'] },
+  { to: '/dashboard', label: 'Dashboard',  icon: LayoutDashboard, roles: ['admin','planner','purchase','manager','agent'] },
+  { to: '/dos',        label: 'Orders',    icon: FileText,         roles: ['admin','planner','purchase','manager'] },
+  { to: '/jobs',       label: 'Jobs',      icon: Briefcase,        roles: ['admin','planner','agent','manager'] },
+  { to: '/queue',      label: 'SC Queue',  icon: Factory,          roles: ['admin','planner','agent','manager'] },
+  { to: '/expenses',   label: 'Expenses',  icon: Receipt,          roles: ['admin','planner','agent','manager'] },
+  { to: '/deliveries', label: 'Deliveries',icon: Truck,            roles: ['admin','planner','agent','manager'] },
+  { to: '/reports',    label: 'Reports',   icon: BarChart3,        roles: ['admin','planner','purchase','manager'] },
 ]
 
-const KPI_MAP: Record<string, string> = {
-  '/dos':        'dos',
-  '/jobs':       'jobs',
-  '/queue':      'scqueue',
-  '/expenses':   'expenses',
-  '/deliveries': 'deliveries',
-  '/reports':    'reports',
+const NAV_COUNTS: Record<string, number> = {
+  '/dos':        2,
+  '/jobs':       3,
+  '/queue':      3,
+  '/expenses':   4,
+  '/deliveries': 9,
 }
 
 const ROLE_PILL: Record<string, { bg: string; text: string; label: string }> = {
   admin:    { bg: 'rgba(139,92,246,0.25)',  text: '#c4b5fd', label: 'Admin' },
   planner:  { bg: 'rgba(59,130,246,0.25)', text: '#93c5fd', label: 'Planner' },
   purchase: { bg: 'rgba(251,191,36,0.22)', text: '#fcd34d', label: 'Purchase' },
-  agent:    { bg: 'rgba(45,212,191,0.22)', text: '#5eead4', label: 'Agent' },
+  agent:    { bg: 'rgba(45,212,191,0.22)', text: '#5eead4', label: 'Delivery Agent' },
+  manager:  { bg: 'rgba(16,185,129,0.22)', text: '#6ee7b7', label: 'Manager' },
 }
 
-/* ── Logo ─────────────────────────────────────────────────────── */
+/* ── Logo ──────────────────────────────────────────────────────── */
 const Logo = ({ size = 34 }: { size?: number }) => (
-  <div
-    style={{
-      width: size, height: size, borderRadius: size * 0.28, flexShrink: 0,
-      background: 'linear-gradient(135deg, #2dd4bf 0%, #0d9488 100%)',
-      boxShadow: '0 0 18px rgba(45,212,191,0.50)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}
-  >
+  <div style={{
+    width: size, height: size, borderRadius: size * 0.28, flexShrink: 0,
+    background: 'linear-gradient(135deg, #2dd4bf 0%, #0d9488 100%)',
+    boxShadow: '0 0 18px rgba(45,212,191,0.50)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  }}>
     <svg viewBox="0 0 24 24" fill="none" width={size * 0.56} height={size * 0.56}>
       <rect x="3"  y="3"  width="8" height="8" rx="1.5" fill="white" opacity="0.95"/>
       <rect x="13" y="3"  width="8" height="8" rx="1.5" fill="white" opacity="0.50"/>
@@ -54,7 +50,7 @@ const Logo = ({ size = 34 }: { size?: number }) => (
   </div>
 )
 
-/* ── Theme toggle ────────────────────────────────────────────── */
+/* ── Theme ──────────────────────────────────────────────────────── */
 const useTheme = () => {
   const [theme, setTheme] = useState<'dark'|'light'>(() => {
     try { return (localStorage.getItem('st-theme') as 'dark'|'light') || 'dark' } catch { return 'dark' }
@@ -66,85 +62,98 @@ const useTheme = () => {
   return { theme, toggle: () => setTheme(t => t === 'dark' ? 'light' : 'dark') }
 }
 
-const ThemeToggle = ({ compact = false }: { compact?: boolean }) => {
-  const { theme, toggle } = useTheme()
+/* ── Sidebar nav item ───────────────────────────────────────────── */
+const SideNavItem = ({ item, onClose }: { item: typeof NAV_ITEMS[0]; onClose?: () => void }) => {
+  const count = NAV_COUNTS[item.to]
   return (
-    <button
-      onClick={toggle}
-      title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-      className="flex items-center justify-center rounded-xl transition-all"
-      style={{
-        width: compact ? 34 : 36, height: compact ? 34 : 36,
-        background: 'var(--g2)', border: '1px solid var(--gb)',
-        color: 'var(--tx2)',
-      }}
+    <NavLink
+      to={item.to}
+      onClick={onClose}
+      style={({ isActive }) => ({
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '0.55rem 0.75rem',
+        borderRadius: '0.65rem',
+        fontSize: '0.82rem', fontWeight: 500,
+        textDecoration: 'none',
+        transition: 'all 0.15s',
+        color: isActive ? '#0d2137' : 'rgba(255,255,255,0.60)',
+        background: isActive
+          ? 'linear-gradient(135deg, #2dd4bf 0%, #0d9488 100%)'
+          : 'transparent',
+        boxShadow: isActive ? '0 4px 16px rgba(45,212,191,0.30)' : 'none',
+      })}
     >
-      {theme === 'dark' ? <Sun size={compact ? 15 : 16} /> : <Moon size={compact ? 15 : 16} />}
-    </button>
+      {({ isActive }) => (
+        <>
+          <span style={{
+            width: 28, height: 28, borderRadius: 8,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            background: isActive ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.06)',
+          }}>
+            <item.icon size={14} />
+          </span>
+          <span style={{ flex: 1 }}>{item.label}</span>
+          {count !== undefined && (
+            <span style={{
+              fontSize: '0.65rem', fontWeight: 700,
+              minWidth: 20, height: 20,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRadius: '999px',
+              background: isActive ? 'rgba(255,255,255,0.25)' : 'rgba(45,212,191,0.20)',
+              color: isActive ? '#0d2137' : '#2dd4bf',
+              padding: '0 5px',
+            }}>
+              {count}
+            </span>
+          )}
+        </>
+      )}
+    </NavLink>
   )
 }
 
-/* ── Sidebar nav item ────────────────────────────────────────── */
-const SideNavItem = ({ item, onClose }: { item: typeof NAV_ITEMS[0]; onClose?: () => void }) => (
-  <NavLink
-    to={item.to}
-    onClick={onClose}
-    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group relative overflow-hidden"
-    style={({ isActive }) => isActive
-      ? { background: 'linear-gradient(135deg, #2dd4bf 0%, #0d9488 100%)', boxShadow: '0 4px 16px rgba(45,212,191,0.35)', color: '#0d2137' }
-      : { color: 'var(--tx2)' }
-    }
-  >
-    {({ isActive }) => (
-      <>
-        {!isActive && (
-          <span className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"
-            style={{ background: 'var(--g2)' }} />
-        )}
-        <span
-          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 relative z-10"
-          style={{ background: isActive ? 'rgba(255,255,255,0.20)' : 'var(--g1)' }}
-        >
-          <item.icon size={16} />
-        </span>
-        <span className="flex-1 relative z-10">{item.label}</span>
-        {isActive && <span className="w-1.5 h-1.5 rounded-full bg-white/60 flex-shrink-0 relative z-10" />}
-      </>
-    )}
-  </NavLink>
-)
-
-/* ── Sidebar content ────────────────────────────────────────── */
-const SidebarContent = ({
-  visibleNav, user, onClose, handleLogout
-}: {
-  visibleNav: typeof NAV_ITEMS;
-  user: any;
-  onClose?: () => void;
-  handleLogout: () => void;
+/* ── Sidebar ────────────────────────────────────────────────────── */
+const Sidebar = ({ visibleNav, user, handleLogout, onClose }: {
+  visibleNav: typeof NAV_ITEMS; user: any; handleLogout: () => void; onClose?: () => void
 }) => {
+  const { theme, toggle } = useTheme()
   const pill = user ? ROLE_PILL[user.role] : null
   return (
-    <div className="flex flex-col h-full">
-      {/* Logo + theme toggle */}
-      <div className="px-4 py-5 flex items-center justify-between" style={{ borderBottom: '1px solid var(--gb)' }}>
-        <div className="flex items-center gap-3">
-          <Logo size={36} />
+    <div style={{
+      display: 'flex', flexDirection: 'column', height: '100%',
+      background: 'rgba(13,17,23,0.95)',
+    }}>
+      {/* Logo */}
+      <div style={{
+        padding: '1.1rem 1rem',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Logo size={34} />
           <div>
-            <div className="text-base font-bold leading-tight" style={{ color: 'var(--tx1)' }}>SteelTrack</div>
-            <div className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--brand)' }}>Logistics</div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'rgba(255,255,255,0.92)', lineHeight: 1.1 }}>SteelTrack</div>
+            <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#2dd4bf', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Logistics &amp; Dispatch</div>
           </div>
         </div>
-        <ThemeToggle compact />
+        <button onClick={toggle}
+          style={{
+            width: 30, height: 30, borderRadius: 8,
+            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', color: 'rgba(255,255,255,0.50)',
+          }}>
+          {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
+        </button>
       </div>
 
-      {/* Nav label */}
-      <div className="px-4 pt-5 pb-1.5">
-        <span className="section-label">Modules</span>
+      {/* Modules label */}
+      <div style={{ padding: '1rem 1rem 0.4rem', fontSize: '0.62rem', fontWeight: 700, color: 'rgba(255,255,255,0.28)', letterSpacing: '0.10em', textTransform: 'uppercase' }}>
+        Modules
       </div>
 
-      {/* Nav items */}
-      <nav className="flex-1 px-3 pb-4 space-y-0.5 overflow-y-auto scrollbar-hide">
+      {/* Nav */}
+      <nav style={{ flex: 1, padding: '0.2rem 0.6rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
         {visibleNav.map(item => (
           <SideNavItem key={item.to} item={item} onClose={onClose} />
         ))}
@@ -152,26 +161,35 @@ const SidebarContent = ({
 
       {/* User footer */}
       {user && pill && (
-        <div className="px-3 pb-4" style={{ borderTop: '1px solid var(--gb)', paddingTop: '0.75rem' }}>
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl" style={{ background: 'var(--g1)', border: '1px solid var(--gb)' }}>
-            <div
-              className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', color: '#0d2137', boxShadow: '0 0 12px rgba(45,212,191,0.40)' }}
-            >
+        <div style={{ padding: '0.6rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '0.6rem 0.75rem', borderRadius: '0.65rem',
+            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
+          }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+              background: 'linear-gradient(135deg, #2dd4bf, #0d9488)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '0.7rem', fontWeight: 800, color: '#0d2137',
+              boxShadow: '0 0 10px rgba(45,212,191,0.40)',
+            }}>
               {user.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold truncate leading-tight" style={{ color: 'var(--tx1)' }}>{user.name}</div>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full mt-0.5 inline-block"
-                style={{ background: pill.bg, color: pill.text }}>{pill.label}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'rgba(255,255,255,0.88)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {user.name}
+              </div>
+              <div style={{ fontSize: '0.62rem', fontWeight: 600, color: pill.text }}>{pill.label}</div>
             </div>
-            <button onClick={handleLogout} title="Logout"
-              className="p-1.5 rounded-lg transition-colors"
-              style={{ color: 'var(--tx3)' }}
-              onMouseEnter={e => (e.currentTarget.style.color = '#f87171')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'var(--tx3)')}
-            >
-              <LogOut size={15} />
+            <button onClick={handleLogout} title="Sign Out"
+              style={{
+                padding: '0.35rem 0.6rem', borderRadius: 8,
+                background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)',
+                cursor: 'pointer', fontSize: '0.65rem', fontWeight: 700,
+                color: '#f87171', letterSpacing: '0.02em',
+              }}>
+              Sign Out
             </button>
           </div>
         </div>
@@ -180,141 +198,32 @@ const SidebarContent = ({
   )
 }
 
-/* ── Always-visible KPI Dashboard Strip ─────────────────────── */
-const DashboardStrip = ({ user }: { user: any }) => {
-  const location = useLocation()
-  const navigate = useNavigate()
-  const isAgent = user?.role === 'agent'
-
-  const activeDOs       = DEMO_DOS.filter(d => ['active','partially_dispatched'].includes(d.status))
-  const activeJobs      = DEMO_JOBS.filter(j => !['delivered','cancelled'].includes(j.status))
-  const pendingExpenses = DEMO_EXPENSES.filter(e => e.status === 'pending')
-  const deliveriesToday = DEMO_DELIVERIES.length
-
-  const hour = new Date().getHours()
-  const greeting = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'
-
-  // determine which KPI is active based on current route
-  const activeKpi = Object.entries(KPI_MAP).find(([path]) =>
-    location.pathname.startsWith(path)
-  )?.[1] ?? null
-
-  const kpis = [
-    { id: 'dos',        val: activeDOs.length,       label: 'Active DOs',        change: '↑ 3 since yesterday', up: true,  path: '/dos' },
-    { id: 'jobs',       val: activeJobs.length,      label: 'Jobs In Progress',  change: '↑ 1 new today',       up: true,  path: '/jobs' },
-    { id: 'expenses',   val: pendingExpenses.length, label: 'Pending Expenses',  change: '↓ 2 approved',        up: false, path: '/expenses' },
-    { id: 'deliveries', val: deliveriesToday,        label: 'Deliveries Today',  change: '↑ 5 completed',       up: true,  path: '/deliveries' },
-    { id: 'scqueue',    val: 3,                      label: 'SC Queue',          change: '● 2 awaiting check-in', up: null, path: '/queue' },
-  ]
-
-  if (isAgent) return null
-
-  return (
-    <div
-      style={{
-        borderBottom: '1px solid var(--gb)',
-        background: 'var(--topbar-bg)',
-        backdropFilter: 'var(--blur-md)',
-        WebkitBackdropFilter: 'var(--blur-md)',
-        flexShrink: 0,
-      }}
-    >
-      {/* Greeting row */}
-      <div style={{ padding: '1rem 1.5rem 0.5rem' }}>
-        <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--tx1)', lineHeight: 1.2 }}>
-          Good {greeting},{' '}
-          <span style={{
-            background: 'linear-gradient(135deg, #2dd4bf, #6366f1)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-          }}>
-            {user?.name?.split(' ')[0]} 👋
-          </span>
-        </div>
-        <div style={{ fontSize: '0.72rem', color: 'var(--tx3)', marginTop: 2 }}>
-          Live operations overview — click a metric to open that module.
-        </div>
-      </div>
-
-      {/* KPI cards */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(min(150px, 100%), 1fr))',
-        gap: '0.6rem',
-        padding: '0 1.25rem 1rem',
-      }}>
-        {kpis.map(k => {
-          const isActive = activeKpi === k.id
-          return (
-            <button
-              key={k.id}
-              onClick={() => navigate(k.path)}
-              style={{
-                textAlign: 'left',
-                padding: '0.75rem 0.9rem',
-                borderRadius: '0.75rem',
-                background: isActive ? 'rgba(45,212,191,0.10)' : 'var(--g1)',
-                border: isActive ? '1px solid rgba(45,212,191,0.45)' : '1px solid var(--gb)',
-                boxShadow: isActive ? '0 4px 20px rgba(45,212,191,0.14)' : 'none',
-                cursor: 'pointer',
-                transition: 'all 0.18s',
-                color: 'inherit',
-                fontFamily: 'inherit',
-              }}
-              onMouseEnter={e => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLElement).style.background = 'var(--g2)'
-                  ;(e.currentTarget as HTMLElement).style.borderColor = 'rgba(45,212,191,0.28)'
-                }
-              }}
-              onMouseLeave={e => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLElement).style.background = 'var(--g1)'
-                  ;(e.currentTarget as HTMLElement).style.borderColor = 'var(--gb)'
-                }
-              }}
-            >
-              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#2dd4bf', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-                {k.val}
-              </div>
-              <div style={{ fontSize: '0.63rem', color: 'var(--tx3)', marginTop: 3 }}>{k.label}</div>
-              <div style={{
-                fontSize: '0.6rem', marginTop: 4, fontWeight: 500,
-                color: k.up === true ? '#34d399' : k.up === false ? '#f87171' : '#fbbf24',
-              }}>
-                {k.change}
-              </div>
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-/* ── Bottom tab bar (mobile) ─────────────────────────────────── */
+/* ── Bottom tab bar (mobile) ────────────────────────────────────── */
 const BottomTabBar = ({ visibleNav }: { visibleNav: typeof NAV_ITEMS }) => (
-  <nav
-    className="lg:hidden fixed bottom-0 left-0 right-0 z-30 flex items-stretch"
-    style={{
-      background: 'var(--tab-bar-bg)',
-      backdropFilter: 'var(--blur-md)', WebkitBackdropFilter: 'var(--blur-md)',
-      borderTop: '1px solid var(--gb)',
-      paddingBottom: 'env(safe-area-inset-bottom)', minHeight: 60,
-    }}
-  >
-    {visibleNav.slice(0, 5).map(item => (
+  <nav style={{
+    display: 'flex', position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 30,
+    background: 'rgba(13,17,23,0.97)', borderTop: '1px solid rgba(255,255,255,0.07)',
+    paddingBottom: 'env(safe-area-inset-bottom)', minHeight: 56,
+  }} className="lg-hide">
+    {visibleNav.filter(i => i.to !== '/dashboard').slice(0, 5).map(item => (
       <NavLink key={item.to} to={item.to}
-        className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-all"
-        style={({ isActive }) => ({ color: isActive ? 'var(--brand)' : 'var(--tx3)' })}
+        style={({ isActive }) => ({
+          flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          gap: 2, padding: '0.4rem 0', textDecoration: 'none',
+          color: isActive ? '#2dd4bf' : 'rgba(255,255,255,0.35)',
+          fontSize: '0.58rem', fontWeight: 600,
+        })}
       >
         {({ isActive }) => (
           <>
-            <span className="flex items-center justify-center w-9 h-7 rounded-xl transition-all"
-              style={isActive ? { background: 'var(--brand-subtle)', boxShadow: '0 0 12px var(--brand-glow)' } : {}}>
-              <item.icon size={19} strokeWidth={isActive ? 2.2 : 1.7} />
+            <span style={{
+              width: 36, height: 26, borderRadius: 10,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: isActive ? 'rgba(45,212,191,0.15)' : 'transparent',
+            }}>
+              <item.icon size={18} strokeWidth={isActive ? 2.2 : 1.6} />
             </span>
-            <span className="text-[10px] font-semibold" style={{ letterSpacing: '0.02em' }}>{item.label}</span>
+            <span>{item.label}</span>
           </>
         )}
       </NavLink>
@@ -322,73 +231,90 @@ const BottomTabBar = ({ visibleNav }: { visibleNav: typeof NAV_ITEMS }) => (
   </nav>
 )
 
-/* ── AppLayout ───────────────────────────────────────────────── */
+/* ── AppLayout ──────────────────────────────────────────────────── */
 export const AppLayout = () => {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const { theme, toggle } = useTheme()
 
   const handleLogout = () => { logout(); navigate('/login') }
   const visibleNav = NAV_ITEMS.filter(n => user && n.roles.includes(user.role))
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#0b1015', color: 'rgba(255,255,255,0.88)' }}>
+
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex flex-col w-60 flex-shrink-0"
-        style={{ background: 'var(--sidebar-bg)', backdropFilter: 'var(--blur-lg)', WebkitBackdropFilter: 'var(--blur-lg)', borderRight: '1px solid var(--gb)' }}>
-        {user && <SidebarContent visibleNav={visibleNav} user={user} handleLogout={handleLogout} />}
+      <aside style={{
+        width: 230, flexShrink: 0,
+        borderRight: '1px solid rgba(255,255,255,0.06)',
+        display: 'none',  // overridden by className below
+      }} className="desktop-sidebar">
+        <style>{`.desktop-sidebar { display: flex !important; flex-direction: column; } @media (max-width: 1023px) { .desktop-sidebar { display: none !important; } .lg-hide { display: flex !important; } } @media (min-width: 1024px) { .lg-hide { display: none !important; } }`}</style>
+        {user && <Sidebar visibleNav={visibleNav} user={user} handleLogout={handleLogout} />}
       </aside>
 
-      {/* Mobile drawer */}
+      {/* Mobile drawer overlay */}
       {drawerOpen && (
-        <div className="lg:hidden fixed inset-0 z-50">
-          <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.50)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex' }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)' }}
             onClick={() => setDrawerOpen(false)} />
-          <aside className="relative w-72 h-full"
-            style={{ background: 'var(--sidebar-bg)', backdropFilter: 'var(--blur-lg)', WebkitBackdropFilter: 'var(--blur-lg)', borderRight: '1px solid var(--gb)', boxShadow: '4px 0 48px rgba(0,0,0,0.40)' }}>
+          <aside style={{
+            position: 'relative', width: 240, height: '100%',
+            borderRight: '1px solid rgba(255,255,255,0.07)',
+            boxShadow: '4px 0 40px rgba(0,0,0,0.50)',
+            zIndex: 1,
+          }}>
             <button onClick={() => setDrawerOpen(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-lg" style={{ color: 'var(--tx2)' }}>
-              <X size={18} />
+              style={{
+                position: 'absolute', top: 14, right: 14, zIndex: 2,
+                background: 'rgba(255,255,255,0.06)', border: 'none',
+                borderRadius: 8, padding: 6, cursor: 'pointer', color: 'rgba(255,255,255,0.60)',
+              }}>
+              <X size={16} />
             </button>
-            {user && <SidebarContent visibleNav={visibleNav} user={user} onClose={() => setDrawerOpen(false)} handleLogout={handleLogout} />}
+            {user && <Sidebar visibleNav={visibleNav} user={user} handleLogout={handleLogout} onClose={() => setDrawerOpen(false)} />}
           </aside>
         </div>
       )}
 
-      {/* Main */}
-      <div className="flex flex-col flex-1 overflow-hidden">
+      {/* Main column */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
         {/* Mobile topbar */}
-        <header className="lg:hidden flex items-center gap-3 px-4 py-3 flex-shrink-0"
-          style={{ background: 'var(--topbar-bg)', backdropFilter: 'var(--blur-md)', WebkitBackdropFilter: 'var(--blur-md)', borderBottom: '1px solid var(--gb)' }}>
+        <header style={{
+          display: 'none',
+          alignItems: 'center', gap: 10,
+          padding: '0.65rem 1rem',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          background: 'rgba(13,17,23,0.97)',
+          flexShrink: 0,
+        }} className="mobile-topbar">
+          <style>{`.mobile-topbar { display: none !important; } @media (max-width: 1023px) { .mobile-topbar { display: flex !important; } }`}</style>
           <button onClick={() => setDrawerOpen(true)}
-            className="p-2 rounded-xl flex flex-col gap-1.5 transition"
-            style={{ background: 'var(--g2)' }} aria-label="Open menu">
-            <span style={{ display:'block', width:18, height:2, borderRadius:2, background:'var(--tx1)' }} />
-            <span style={{ display:'block', width:13, height:2, borderRadius:2, background:'var(--tx1)' }} />
-            <span style={{ display:'block', width:18, height:2, borderRadius:2, background:'var(--tx1)' }} />
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, padding: '6px 8px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ display: 'block', width: 16, height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.80)' }} />
+            <span style={{ display: 'block', width: 11, height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.80)' }} />
+            <span style={{ display: 'block', width: 16, height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.80)' }} />
           </button>
-          <Logo size={28} />
+          <Logo size={26} />
           <div>
-            <div className="text-sm font-bold leading-tight" style={{ color: 'var(--tx1)' }}>SteelTrack</div>
-            <div className="text-[9px] uppercase tracking-widest" style={{ color: 'var(--brand)' }}>Logistics</div>
+            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'rgba(255,255,255,0.92)' }}>SteelTrack</div>
+            <div style={{ fontSize: '0.58rem', color: '#2dd4bf', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Logistics</div>
           </div>
-          <div className="ml-auto flex items-center gap-2">
-            <ThemeToggle compact />
-            {user && (
-              <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full"
-                style={{ background: ROLE_PILL[user.role]?.bg, color: ROLE_PILL[user.role]?.text }}>
-                {ROLE_PILL[user.role]?.label}
-              </span>
-            )}
-          </div>
+          {user && (
+            <span style={{
+              marginLeft: 'auto', fontSize: '0.62rem', fontWeight: 700,
+              padding: '0.25rem 0.6rem', borderRadius: 999,
+              background: ROLE_PILL[user.role]?.bg ?? 'rgba(255,255,255,0.1)',
+              color: ROLE_PILL[user.role]?.text ?? '#fff',
+            }}>
+              {ROLE_PILL[user.role]?.label ?? user.role}
+            </span>
+          )}
         </header>
 
-        {/* ── ALWAYS-VISIBLE DASHBOARD KPI STRIP ── */}
-        <DashboardStrip user={user} />
-
-        {/* Page content renders below the dashboard */}
-        <main className="flex-1 overflow-y-auto pb-16 lg:pb-0">
+        {/* Page content */}
+        <main style={{ flex: 1, overflowY: 'auto', paddingBottom: 64 }}>
           <Outlet />
         </main>
       </div>
