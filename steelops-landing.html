@@ -3,29 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SteelTrack – Landing Page Preview</title>
+<title>SteelTrack – Home</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-font-smoothing:antialiased;scroll-behavior:smooth}
 body{font-family:'Inter',system-ui,sans-serif;background:#0b0f1a;color:#f1f5f9;min-height:100dvh;overflow-x:hidden}
-
-/* ---------- PREVIEW TOOLBAR ---------- */
-.preview-bar{
-  background:#1a1f2e;border-bottom:1px solid rgba(255,255,255,.08);
-  padding:.55rem 1.25rem;display:flex;align-items:center;gap:1rem;font-size:.72rem;
-  color:rgba(241,245,249,.5);position:sticky;top:0;z-index:999;
-}
-.preview-bar strong{color:#2dd4bf;font-size:.78rem}
-.role-switcher{display:flex;gap:.4rem;flex-wrap:wrap}
-.role-btn{
-  padding:.22rem .65rem;border-radius:9999px;border:1px solid rgba(255,255,255,.12);
-  background:transparent;color:rgba(241,245,249,.55);font-size:.65rem;font-weight:600;
-  cursor:pointer;transition:all .18s;font-family:inherit;letter-spacing:.04em;text-transform:uppercase
-}
-.role-btn:hover{background:rgba(255,255,255,.08)}
-.role-btn.active{background:rgba(45,212,191,.15);border-color:rgba(45,212,191,.4);color:#2dd4bf}
 
 /* ---------- PAGE ---------- */
 .page{
@@ -42,7 +26,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0b0f1a;color:#f1f5f9;m
   padding:1rem 1.5rem;
   border-bottom:1px solid rgba(255,255,255,.06);
   backdrop-filter:blur(12px);background:rgba(11,15,26,.75);
-  position:sticky;top:40px;z-index:50;
+  position:sticky;top:0;z-index:50;
 }
 .nav-logo{display:flex;align-items:center;gap:.65rem}
 .logo-box{
@@ -140,34 +124,15 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0b0f1a;color:#f1f5f9;m
   border-top:1px solid rgba(255,255,255,.04)
 }
 
-/* ---------- HIDDEN ---------- */
-.hidden{display:none!important}
-
 @keyframes fadein{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 
 @media(max-width:600px){
   .strip-card{flex:1 1 calc(50% - .3rem)}
-  .nav{top:52px}
 }
 </style>
 </head>
 <body>
 
-<!-- ── PREVIEW TOOLBAR ──────────────────────────────────────────── -->
-<div class="preview-bar">
-  <strong>🔍 Preview Mode</strong>
-  <span>Switch Role →</span>
-  <div class="role-switcher" id="roleSwitcher">
-    <button class="role-btn active" data-role="admin"    onclick="setRole(this)">Admin</button>
-    <button class="role-btn"       data-role="manager"  onclick="setRole(this)">Manager</button>
-    <button class="role-btn"       data-role="planner"  onclick="setRole(this)">Planner</button>
-    <button class="role-btn"       data-role="purchase" onclick="setRole(this)">Purchase</button>
-    <button class="role-btn"       data-role="agent"    onclick="setRole(this)">Agent</button>
-  </div>
-</div>
-
-<!-- ── PAGE ────────────────────────────────────────────────────── -->
 <div class="page">
 
   <!-- NAV -->
@@ -189,7 +154,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0b0f1a;color:#f1f5f9;m
     <div class="nav-right">
       <span class="role-pill" id="rolePill"></span>
       <div class="avatar" id="avatarEl">D</div>
-      <button class="signout-btn">Sign Out</button>
+      <button class="signout-btn" onclick="handleSignOut()">Sign Out</button>
     </div>
   </nav>
 
@@ -198,7 +163,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0b0f1a;color:#f1f5f9;m
     <div class="greet-row">
       <div>
         <div class="greet-text">
-          Good evening, <span class="greet-accent" id="firstName">Digvijay</span> 👋
+          <span id="greetTime">Good morning</span>, <span class="greet-accent" id="firstName">User</span> &#x1F44B;
         </div>
         <div class="hero-sub">
           Here's your operations overview. Select a module below to get started.
@@ -209,12 +174,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0b0f1a;color:#f1f5f9;m
   </div>
 
   <!-- STATUS STRIP -->
-  <div class="strip">
-    <div class="strip-card"><div class="strip-val">—</div><div class="strip-lbl">Active DOs</div></div>
-    <div class="strip-card"><div class="strip-val">—</div><div class="strip-lbl">Jobs In Progress</div></div>
-    <div class="strip-card"><div class="strip-val">—</div><div class="strip-lbl">Pending Expenses</div></div>
-    <div class="strip-card"><div class="strip-val">—</div><div class="strip-lbl">Deliveries Today</div></div>
-  </div>
+  <div class="strip" id="statusStrip"></div>
 
   <!-- QUICK ACTIONS -->
   <div class="section">
@@ -224,91 +184,122 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0b0f1a;color:#f1f5f9;m
 
   <!-- FOOTER -->
   <div class="footer">
-    Steel Logistics &amp; Dispatch Tracker v1.0 &nbsp;·&nbsp;
-    <span id="footerEmail">digvijay@steeltrack.in</span>
+    Steel Logistics &amp; Dispatch Tracker v1.0 &nbsp;&middot;&nbsp;
+    <span id="footerEmail"></span>
   </div>
 </div>
 
 <script>
-/* ── Data ─────────────────────────────────────────────────────── */
+/* ── Role definitions ─────────────────────────────────────────── */
 const ROLES = {
-  admin:    { label:'Admin',          colour:'#a78bfa', glow:'rgba(167,139,250,.18)', name:'Digvijay Boya',    email:'admin@steeltrack.in' },
-  manager:  { label:'Manager',        colour:'#f59e0b', glow:'rgba(245,158,11,.18)',  name:'Rajesh Kumar',     email:'manager@steeltrack.in' },
-  planner:  { label:'Planner',        colour:'#2dd4bf', glow:'rgba(45,212,191,.18)',  name:'Priya Sharma',     email:'planner@steeltrack.in' },
-  purchase: { label:'Purchase',       colour:'#60a5fa', glow:'rgba(96,165,250,.18)',  name:'Amit Joshi',       email:'purchase@steeltrack.in' },
-  agent:    { label:'Delivery Agent', colour:'#34d399', glow:'rgba(52,211,153,.18)',  name:'Suresh Patil',     email:'agent@steeltrack.in' },
-}
+  admin:    { label:'Admin',          colour:'#a78bfa', glow:'rgba(167,139,250,.18)', name:'Digvijay Boya',  email:'admin@steeltrack.in' },
+  manager:  { label:'Manager',        colour:'#f59e0b', glow:'rgba(245,158,11,.18)',  name:'Rajesh Kumar',   email:'manager@steeltrack.in' },
+  planner:  { label:'Planner',        colour:'#2dd4bf', glow:'rgba(45,212,191,.18)',  name:'Priya Sharma',   email:'planner@steeltrack.in' },
+  purchase: { label:'Purchase',       colour:'#60a5fa', glow:'rgba(96,165,250,.18)',  name:'Amit Joshi',     email:'purchase@steeltrack.in' },
+  agent:    { label:'Delivery Agent', colour:'#34d399', glow:'rgba(52,211,153,.18)',  name:'Suresh Patil',   email:'agent@steeltrack.in' },
+};
 
-/* Dashboard removed from ACTIONS — it is already the page users land on */
+/* ── Status strip config per role ─────────────────────────────── */
+const STATUS_STRIPS = {
+  admin:    ['Active DOs','Jobs In Progress','Pending Expenses','Deliveries Today'],
+  manager:  ['Active DOs','Jobs In Progress','Pending Expenses','Deliveries Today'],
+  planner:  ['Active DOs','Jobs In Progress','Pending SC Jobs','Pending Deliveries'],
+  purchase: ['Active DOs','Pending POs','Approved Expenses','Deliveries Today'],
+  agent:    ['Assigned Jobs','Pending Pickups','Expenses Logged','Deliveries Today'],
+};
+
+/* ── Quick Access cards (Dashboard removed — this page IS the home) */
 const ACTIONS = [
-  { icon:'📋', title:'Delivery Orders', desc:'Create, view, and manage DOs from suppliers',         accent:'#60a5fa', roles:['admin','manager','purchase','planner'] },
-  { icon:'🗂️', title:'Job Cards',       desc:'Plan processing instructions & assign agents',        accent:'#a78bfa', roles:['admin','manager','planner'] },
-  { icon:'🏭', title:'SC Queue',        desc:'Service centre queue status & check-in',              accent:'#f59e0b', roles:['admin','manager','agent'] },
-  { icon:'💸', title:'Expenses',        desc:'Log field payments with photo proof',                 accent:'#34d399', roles:['admin','manager','agent'] },
-  { icon:'🚛', title:'Deliveries',      desc:'Track drops, route changes & delivery logs',          accent:'#fb923c', roles:['admin','manager','agent','planner'] },
-  { icon:'📈', title:'Reports',         desc:'Cost summaries, DO performance & billing view',       accent:'#e879f9', roles:['admin','manager'] },
-]
+  { icon:'📋', title:'Delivery Orders', desc:'Create, view, and manage DOs from suppliers',        accent:'#60a5fa', roles:['admin','manager','purchase','planner'] },
+  { icon:'🗂️', title:'Job Cards',       desc:'Plan processing instructions & assign agents',       accent:'#a78bfa', roles:['admin','manager','planner'] },
+  { icon:'🏭', title:'SC Queue',        desc:'Service centre queue status & check-in',             accent:'#f59e0b', roles:['admin','manager','agent'] },
+  { icon:'💸', title:'Expenses',        desc:'Log field payments with photo proof',                accent:'#34d399', roles:['admin','manager','agent'] },
+  { icon:'🚛', title:'Deliveries',      desc:'Track drops, route changes & delivery logs',         accent:'#fb923c', roles:['admin','manager','agent','planner'] },
+  { icon:'📈', title:'Reports',         desc:'Cost summaries, DO performance & billing view',      accent:'#e879f9', roles:['admin','manager'] },
+];
 
-let currentRole = 'admin'
-
-function setRole(btn) {
-  document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'))
-  btn.classList.add('active')
-  currentRole = btn.dataset.role
-  renderRole()
+/* ── Detect role from URL param or sessionStorage ─────────────── */
+function detectRole() {
+  const params = new URLSearchParams(window.location.search);
+  const fromUrl = params.get('role');
+  if (fromUrl && ROLES[fromUrl]) return fromUrl;
+  const fromSession = sessionStorage.getItem('steeltrack_role');
+  if (fromSession && ROLES[fromSession]) return fromSession;
+  return 'admin'; // fallback
 }
 
-function renderRole() {
-  const r = ROLES[currentRole]
-  const fn = r.name.split(' ')[0]
+/* ── Greeting based on time ───────────────────────────────────── */
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
 
-  // Pill
-  const pill = document.getElementById('rolePill')
-  pill.textContent = r.label
-  pill.style.background = r.glow
-  pill.style.border = `1px solid ${r.colour}44`
-  pill.style.color = r.colour
+/* ── Render ───────────────────────────────────────────────────── */
+function render() {
+  const role = detectRole();
+  const r = ROLES[role];
+  const fn = r.name.split(' ')[0];
 
-  // Avatar
-  document.getElementById('avatarEl').textContent = fn[0].toUpperCase()
-  document.getElementById('firstName').textContent = fn
-  document.getElementById('footerEmail').textContent = r.email
+  // Nav pill + avatar
+  const pill = document.getElementById('rolePill');
+  pill.textContent = r.label;
+  pill.style.background = r.glow;
+  pill.style.border = `1px solid ${r.colour}44`;
+  pill.style.color = r.colour;
+  document.getElementById('avatarEl').textContent = fn[0].toUpperCase();
 
-  // Today
+  // Hero
+  document.getElementById('greetTime').textContent = getGreeting();
+  document.getElementById('firstName').textContent = fn;
+  document.getElementById('footerEmail').textContent = r.email;
   document.getElementById('todayPill').textContent =
-    new Date().toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' })
+    new Date().toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
 
-  // Grid
-  const grid = document.getElementById('actionsGrid')
-  grid.innerHTML = ''
-  const visible = ACTIONS.filter(a => a.roles.includes(currentRole))
-  visible.forEach((a, i) => {
-    const card = document.createElement('div')
-    card.className = 'card'
-    card.style.animationDelay = `${i * 0.04}s`
+  // Status strip
+  const strip = document.getElementById('statusStrip');
+  strip.innerHTML = '';
+  (STATUS_STRIPS[role] || STATUS_STRIPS.admin).forEach(lbl => {
+    strip.innerHTML += `
+      <div class="strip-card">
+        <div class="strip-val">—</div>
+        <div class="strip-lbl">${lbl}</div>
+      </div>`;
+  });
+
+  // Quick access grid
+  const grid = document.getElementById('actionsGrid');
+  grid.innerHTML = '';
+  ACTIONS.filter(a => a.roles.includes(role)).forEach((a, i) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.animationDelay = `${i * 0.04}s`;
     card.innerHTML = `
-      <div class="icon-chip" style="background:${a.accent}18;border:1px solid ${a.accent}30">
-        ${a.icon}
-      </div>
+      <div class="icon-chip" style="background:${a.accent}18;border:1px solid ${a.accent}30">${a.icon}</div>
       <div>
         <div class="card-title">${a.title}</div>
         <div class="card-desc">${a.desc}</div>
       </div>
-      <div class="card-arrow" style="color:${a.accent}">Open →</div>
-    `
+      <div class="card-arrow" style="color:${a.accent}">Open &rarr;</div>`;
     card.addEventListener('mouseenter', () => {
-      card.style.boxShadow = `0 12px 32px ${a.accent}22`
-      card.style.borderColor = `${a.accent}44`
-    })
+      card.style.boxShadow = `0 12px 32px ${a.accent}22`;
+      card.style.borderColor = `${a.accent}44`;
+    });
     card.addEventListener('mouseleave', () => {
-      card.style.boxShadow = ''
-      card.style.borderColor = 'rgba(255,255,255,.07)'
-    })
-    grid.appendChild(card)
-  })
+      card.style.boxShadow = '';
+      card.style.borderColor = 'rgba(255,255,255,.07)';
+    });
+    grid.appendChild(card);
+  });
 }
 
-renderRole()
+function handleSignOut() {
+  sessionStorage.removeItem('steeltrack_role');
+  window.location.href = 'steelops-login.html';
+}
+
+render();
 </script>
 </body>
 </html>
