@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SteelTrack – Landing Page Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased;scroll-behavior:smooth}
+body{font-family:'Inter',system-ui,sans-serif;background:#0b0f1a;color:#f1f5f9;min-height:100dvh;overflow-x:hidden}
+
+/* ---------- PREVIEW TOOLBAR ---------- */
+.preview-bar{
+  background:#1a1f2e;border-bottom:1px solid rgba(255,255,255,.08);
+  padding:.55rem 1.25rem;display:flex;align-items:center;gap:1rem;font-size:.72rem;
+  color:rgba(241,245,249,.5);position:sticky;top:0;z-index:999;
+}
+.preview-bar strong{color:#2dd4bf;font-size:.78rem}
+.role-switcher{display:flex;gap:.4rem;flex-wrap:wrap}
+.role-btn{
+  padding:.22rem .65rem;border-radius:9999px;border:1px solid rgba(255,255,255,.12);
+  background:transparent;color:rgba(241,245,249,.55);font-size:.65rem;font-weight:600;
+  cursor:pointer;transition:all .18s;font-family:inherit;letter-spacing:.04em;text-transform:uppercase
+}
+.role-btn:hover{background:rgba(255,255,255,.08)}
+.role-btn.active{background:rgba(45,212,191,.15);border-color:rgba(45,212,191,.4);color:#2dd4bf}
+
+/* ---------- PAGE ---------- */
+.page{
+  min-height:100dvh;
+  background:
+    radial-gradient(ellipse 70% 55% at 15% 30%, rgba(45,212,191,.14) 0%, transparent 55%),
+    radial-gradient(ellipse 55% 45% at 85% 75%, rgba(99,102,241,.12) 0%, transparent 50%),
+    #0b0f1a;
+}
+
+/* ---------- NAV ---------- */
+.nav{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:1rem 1.5rem;
+  border-bottom:1px solid rgba(255,255,255,.06);
+  backdrop-filter:blur(12px);background:rgba(11,15,26,.75);
+  position:sticky;top:40px;z-index:50;
+}
+.nav-logo{display:flex;align-items:center;gap:.65rem}
+.logo-box{
+  width:36px;height:36px;border-radius:.6rem;
+  background:linear-gradient(135deg,#2dd4bf,#0d9488);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 3px 10px rgba(45,212,191,.3);flex-shrink:0
+}
+.app-name{font-size:.95rem;font-weight:700;color:#f1f5f9}
+.app-sub{font-size:.65rem;color:rgba(241,245,249,.4);margin-top:1px}
+.nav-right{display:flex;align-items:center;gap:.75rem}
+.role-pill{
+  padding:.25rem .7rem;border-radius:9999px;font-size:.68rem;
+  font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+  transition:all .25s
+}
+.avatar{
+  width:34px;height:34px;border-radius:50%;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);
+  display:flex;align-items:center;justify-content:center;
+  font-size:.8rem;font-weight:700;color:#f1f5f9
+}
+.signout-btn{
+  padding:.3rem .8rem;border-radius:.55rem;
+  background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);
+  color:#fca5a5;font-size:.72rem;font-weight:600;cursor:pointer;
+  transition:background .18s;font-family:inherit
+}
+.signout-btn:hover{background:rgba(239,68,68,.18)}
+
+/* ---------- HERO ---------- */
+.hero{padding:2.5rem 1.5rem 1.5rem;max-width:980px;margin:0 auto}
+.greet-row{
+  display:flex;align-items:flex-end;justify-content:space-between;
+  flex-wrap:wrap;gap:1rem;margin-bottom:.5rem
+}
+.greet-text{font-size:clamp(1.5rem,3.5vw,2.2rem);font-weight:800;line-height:1.15;color:#f1f5f9}
+.greet-accent{
+  background:linear-gradient(135deg,#2dd4bf,#6366f1);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent
+}
+.hero-sub{font-size:.88rem;color:rgba(241,245,249,.45);margin-top:.4rem;line-height:1.6}
+.today-pill{
+  padding:.35rem .9rem;border-radius:9999px;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+  font-size:.72rem;color:rgba(241,245,249,.5);flex-shrink:0;white-space:nowrap
+}
+
+/* ---------- STATUS STRIP ---------- */
+.strip{
+  display:flex;gap:.6rem;flex-wrap:wrap;
+  padding:0 1.5rem 1.75rem;max-width:980px;margin:0 auto
+}
+.strip-card{
+  flex:1 1 140px;
+  padding:.85rem 1rem;border-radius:.85rem;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);
+  backdrop-filter:blur(8px)
+}
+.strip-val{font-size:1.35rem;font-weight:800;color:#2dd4bf;line-height:1}
+.strip-lbl{font-size:.68rem;color:rgba(241,245,249,.4);margin-top:4px}
+
+/* ---------- QUICK ACTIONS ---------- */
+.section{padding:0 1.5rem 1.5rem;max-width:980px;margin:0 auto}
+.section-label{
+  font-size:.7rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:rgba(241,245,249,.3);margin-bottom:.9rem
+}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(min(220px,100%),1fr));
+  gap:.85rem
+}
+.card{
+  display:flex;flex-direction:column;gap:.6rem;
+  padding:1.1rem 1rem;border-radius:.9rem;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);
+  backdrop-filter:blur(8px);cursor:pointer;text-align:left;
+  transition:transform .18s,box-shadow .18s,border-color .18s,background .18s;
+  animation:fadein .35s ease both
+}
+.card:hover{transform:translateY(-3px);background:rgba(255,255,255,.055)}
+.icon-chip{
+  width:38px;height:38px;border-radius:.65rem;font-size:1.1rem;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0
+}
+.card-title{font-size:.87rem;font-weight:700;color:#f1f5f9;margin-bottom:3px}
+.card-desc{font-size:.72rem;color:rgba(241,245,249,.42);line-height:1.45}
+.card-arrow{margin-top:auto;font-size:.72rem;font-weight:600;opacity:.7}
+
+/* ---------- FOOTER ---------- */
+.footer{
+  text-align:center;padding:2rem 1rem;
+  font-size:.65rem;color:rgba(241,245,249,.18);
+  border-top:1px solid rgba(255,255,255,.04)
+}
+
+/* ---------- HIDDEN ---------- */
+.hidden{display:none!important}
+
+@keyframes fadein{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+@media(max-width:600px){
+  .strip-card{flex:1 1 calc(50% - .3rem)}
+  .nav{top:52px}
+}
+</style>
+</head>
+<body>
+
+<!-- ── PREVIEW TOOLBAR ──────────────────────────────────────────── -->
+<div class="preview-bar">
+  <strong>🔍 Preview Mode</strong>
+  <span>Switch Role →</span>
+  <div class="role-switcher" id="roleSwitcher">
+    <button class="role-btn active" data-role="admin"    onclick="setRole(this)">Admin</button>
+    <button class="role-btn"       data-role="manager"  onclick="setRole(this)">Manager</button>
+    <button class="role-btn"       data-role="planner"  onclick="setRole(this)">Planner</button>
+    <button class="role-btn"       data-role="purchase" onclick="setRole(this)">Purchase</button>
+    <button class="role-btn"       data-role="agent"    onclick="setRole(this)">Agent</button>
+  </div>
+</div>
+
+<!-- ── PAGE ────────────────────────────────────────────────────── -->
+<div class="page">
+
+  <!-- NAV -->
+  <nav class="nav">
+    <div class="nav-logo">
+      <div class="logo-box">
+        <svg viewBox="0 0 24 24" fill="none" width="20" height="20">
+          <rect x="3"  y="3"  width="8" height="8" rx="1.5" fill="white" opacity="0.9"/>
+          <rect x="13" y="3"  width="8" height="8" rx="1.5" fill="white" opacity="0.55"/>
+          <rect x="3"  y="13" width="8" height="8" rx="1.5" fill="white" opacity="0.55"/>
+          <rect x="13" y="13" width="8" height="8" rx="1.5" fill="white" opacity="0.9"/>
+        </svg>
+      </div>
+      <div>
+        <div class="app-name">SteelTrack</div>
+        <div class="app-sub">Logistics &amp; Dispatch Tracker</div>
+      </div>
+    </div>
+    <div class="nav-right">
+      <span class="role-pill" id="rolePill"></span>
+      <div class="avatar" id="avatarEl">D</div>
+      <button class="signout-btn">Sign Out</button>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="greet-row">
+      <div>
+        <div class="greet-text">
+          Good evening, <span class="greet-accent" id="firstName">Digvijay</span> 👋
+        </div>
+        <div class="hero-sub">
+          Here's your operations overview. Select a module below to get started.
+        </div>
+      </div>
+      <div class="today-pill" id="todayPill"></div>
+    </div>
+  </div>
+
+  <!-- STATUS STRIP -->
+  <div class="strip">
+    <div class="strip-card"><div class="strip-val">—</div><div class="strip-lbl">Active DOs</div></div>
+    <div class="strip-card"><div class="strip-val">—</div><div class="strip-lbl">Jobs In Progress</div></div>
+    <div class="strip-card"><div class="strip-val">—</div><div class="strip-lbl">Pending Expenses</div></div>
+    <div class="strip-card"><div class="strip-val">—</div><div class="strip-lbl">Deliveries Today</div></div>
+  </div>
+
+  <!-- QUICK ACTIONS -->
+  <div class="section">
+    <div class="section-label">Quick Access</div>
+    <div class="grid" id="actionsGrid"></div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    Steel Logistics &amp; Dispatch Tracker v1.0 &nbsp;·&nbsp;
+    <span id="footerEmail">digvijay@steeltrack.in</span>
+  </div>
+</div>
+
+<script>
+/* ── Data ─────────────────────────────────────────────────────── */
+const ROLES = {
+  admin:    { label:'Admin',          colour:'#a78bfa', glow:'rgba(167,139,250,.18)', name:'Digvijay Boya',    email:'admin@steeltrack.in' },
+  manager:  { label:'Manager',        colour:'#f59e0b', glow:'rgba(245,158,11,.18)',  name:'Rajesh Kumar',     email:'manager@steeltrack.in' },
+  planner:  { label:'Planner',        colour:'#2dd4bf', glow:'rgba(45,212,191,.18)',  name:'Priya Sharma',     email:'planner@steeltrack.in' },
+  purchase: { label:'Purchase',       colour:'#60a5fa', glow:'rgba(96,165,250,.18)',  name:'Amit Joshi',       email:'purchase@steeltrack.in' },
+  agent:    { label:'Delivery Agent', colour:'#34d399', glow:'rgba(52,211,153,.18)',  name:'Suresh Patil',     email:'agent@steeltrack.in' },
+}
+
+/* Dashboard removed from ACTIONS — it is already the page users land on */
+const ACTIONS = [
+  { icon:'📋', title:'Delivery Orders', desc:'Create, view, and manage DOs from suppliers',         accent:'#60a5fa', roles:['admin','manager','purchase','planner'] },
+  { icon:'🗂️', title:'Job Cards',       desc:'Plan processing instructions & assign agents',        accent:'#a78bfa', roles:['admin','manager','planner'] },
+  { icon:'🏭', title:'SC Queue',        desc:'Service centre queue status & check-in',              accent:'#f59e0b', roles:['admin','manager','agent'] },
+  { icon:'💸', title:'Expenses',        desc:'Log field payments with photo proof',                 accent:'#34d399', roles:['admin','manager','agent'] },
+  { icon:'🚛', title:'Deliveries',      desc:'Track drops, route changes & delivery logs',          accent:'#fb923c', roles:['admin','manager','agent','planner'] },
+  { icon:'📈', title:'Reports',         desc:'Cost summaries, DO performance & billing view',       accent:'#e879f9', roles:['admin','manager'] },
+]
+
+let currentRole = 'admin'
+
+function setRole(btn) {
+  document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'))
+  btn.classList.add('active')
+  currentRole = btn.dataset.role
+  renderRole()
+}
+
+function renderRole() {
+  const r = ROLES[currentRole]
+  const fn = r.name.split(' ')[0]
+
+  // Pill
+  const pill = document.getElementById('rolePill')
+  pill.textContent = r.label
+  pill.style.background = r.glow
+  pill.style.border = `1px solid ${r.colour}44`
+  pill.style.color = r.colour
+
+  // Avatar
+  document.getElementById('avatarEl').textContent = fn[0].toUpperCase()
+  document.getElementById('firstName').textContent = fn
+  document.getElementById('footerEmail').textContent = r.email
+
+  // Today
+  document.getElementById('todayPill').textContent =
+    new Date().toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' })
+
+  // Grid
+  const grid = document.getElementById('actionsGrid')
+  grid.innerHTML = ''
+  const visible = ACTIONS.filter(a => a.roles.includes(currentRole))
+  visible.forEach((a, i) => {
+    const card = document.createElement('div')
+    card.className = 'card'
+    card.style.animationDelay = `${i * 0.04}s`
+    card.innerHTML = `
+      <div class="icon-chip" style="background:${a.accent}18;border:1px solid ${a.accent}30">
+        ${a.icon}
+      </div>
+      <div>
+        <div class="card-title">${a.title}</div>
+        <div class="card-desc">${a.desc}</div>
+      </div>
+      <div class="card-arrow" style="color:${a.accent}">Open →</div>
+    `
+    card.addEventListener('mouseenter', () => {
+      card.style.boxShadow = `0 12px 32px ${a.accent}22`
+      card.style.borderColor = `${a.accent}44`
+    })
+    card.addEventListener('mouseleave', () => {
+      card.style.boxShadow = ''
+      card.style.borderColor = 'rgba(255,255,255,.07)'
+    })
+    grid.appendChild(card)
+  })
+}
+
+renderRole()
+</script>
+</body>
+</html>
