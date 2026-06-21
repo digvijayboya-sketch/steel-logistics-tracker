@@ -2,13 +2,12 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
 import { cls } from '@/lib/utils'
 import {
-  LayoutDashboard, FileText, Briefcase, Factory,
+  FileText, Briefcase, Factory,
   Receipt, Truck, BarChart3, LogOut, X, Sun, Moon
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const NAV_ITEMS = [
-  { to: '/dashboard',  label: 'Dashboard',  icon: LayoutDashboard, roles: ['admin','planner','purchase','agent'] },
   { to: '/dos',        label: 'Orders',     icon: FileText,        roles: ['admin','planner','purchase'] },
   { to: '/jobs',       label: 'Jobs',       icon: Briefcase,       roles: ['admin','planner','agent'] },
   { to: '/queue',      label: 'SC Queue',   icon: Factory,         roles: ['admin','planner','agent'] },
