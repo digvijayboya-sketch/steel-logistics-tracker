@@ -2,19 +2,18 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
 import {
   FileText, Briefcase, Factory,
-  Receipt, Truck, BarChart3, LogOut, X, Sun, Moon, LayoutDashboard
+  Receipt, Truck, BarChart3, LogOut, X, Sun, Moon, LayoutDashboard, Menu
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { DEMO_DOS, DEMO_JOBS, DEMO_EXPENSES, DEMO_DELIVERIES } from '@/lib/demoData'
 
 const NAV_ITEMS = [
-  { to: '/dashboard', label: 'Dashboard',  icon: LayoutDashboard, roles: ['admin','planner','purchase','manager','agent'] },
-  { to: '/dos',        label: 'Orders',    icon: FileText,         roles: ['admin','planner','purchase','manager'] },
-  { to: '/jobs',       label: 'Jobs',      icon: Briefcase,        roles: ['admin','planner','agent','manager'] },
-  { to: '/queue',      label: 'SC Queue',  icon: Factory,          roles: ['admin','planner','agent','manager'] },
-  { to: '/expenses',   label: 'Expenses',  icon: Receipt,          roles: ['admin','planner','agent','manager'] },
-  { to: '/deliveries', label: 'Deliveries',icon: Truck,            roles: ['admin','planner','agent','manager'] },
-  { to: '/reports',    label: 'Reports',   icon: BarChart3,        roles: ['admin','planner','purchase','manager'] },
+  { to: '/dashboard', label: 'Dashboard',   icon: LayoutDashboard, roles: ['admin','planner','purchase','manager','agent'] },
+  { to: '/dos',        label: 'Orders',     icon: FileText,         roles: ['admin','planner','purchase','manager'] },
+  { to: '/jobs',       label: 'Jobs',       icon: Briefcase,        roles: ['admin','planner','agent','manager'] },
+  { to: '/queue',      label: 'SC Queue',   icon: Factory,          roles: ['admin','planner','agent','manager'] },
+  { to: '/expenses',   label: 'Expenses',   icon: Receipt,          roles: ['admin','planner','agent','manager'] },
+  { to: '/deliveries', label: 'Deliveries', icon: Truck,            roles: ['admin','planner','agent','manager'] },
+  { to: '/reports',    label: 'Reports',    icon: BarChart3,        roles: ['admin','planner','purchase','manager'] },
 ]
 
 const NAV_COUNTS: Record<string, number> = {
@@ -25,32 +24,33 @@ const NAV_COUNTS: Record<string, number> = {
   '/deliveries': 9,
 }
 
-const ROLE_PILL: Record<string, { bg: string; text: string; label: string }> = {
-  admin:    { bg: 'rgba(139,92,246,0.25)',  text: '#c4b5fd', label: 'Admin' },
-  planner:  { bg: 'rgba(59,130,246,0.25)', text: '#93c5fd', label: 'Planner' },
-  purchase: { bg: 'rgba(251,191,36,0.22)', text: '#fcd34d', label: 'Purchase' },
-  agent:    { bg: 'rgba(45,212,191,0.22)', text: '#5eead4', label: 'Delivery Agent' },
-  manager:  { bg: 'rgba(16,185,129,0.22)', text: '#6ee7b7', label: 'Manager' },
+const ROLE_PILL: Record<string, { bg: string; color: string; label: string }> = {
+  admin:    { bg: 'rgba(167,139,250,0.18)', color: '#c4b5fd', label: 'Admin' },
+  planner:  { bg: 'rgba(96,165,250,0.18)',  color: '#93c5fd', label: 'Planner' },
+  purchase: { bg: 'rgba(251,191,36,0.18)',  color: '#fcd34d', label: 'Purchase' },
+  agent:    { bg: 'rgba(45,212,191,0.18)',  color: '#5eead4', label: 'Delivery Agent' },
+  manager:  { bg: 'rgba(52,211,153,0.18)',  color: '#6ee7b7', label: 'Manager' },
 }
 
-/* ── Logo ──────────────────────────────────────────────────────── */
-const Logo = ({ size = 34 }: { size?: number }) => (
+/* ── Logo SVG ───────────────────────────────────────────────────── */
+const LogoIcon = ({ size = 34 }: { size?: number }) => (
   <div style={{
-    width: size, height: size, borderRadius: size * 0.28, flexShrink: 0,
-    background: 'linear-gradient(135deg, #2dd4bf 0%, #0d9488 100%)',
-    boxShadow: '0 0 18px rgba(45,212,191,0.50)',
+    width: size, height: size, borderRadius: Math.round(size * 0.28),
+    flexShrink: 0,
+    background: 'linear-gradient(140deg, #2dd4bf 0%, #0d9488 100%)',
+    boxShadow: '0 0 20px rgba(45,212,191,0.45)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   }}>
     <svg viewBox="0 0 24 24" fill="none" width={size * 0.56} height={size * 0.56}>
       <rect x="3"  y="3"  width="8" height="8" rx="1.5" fill="white" opacity="0.95"/>
-      <rect x="13" y="3"  width="8" height="8" rx="1.5" fill="white" opacity="0.50"/>
-      <rect x="3"  y="13" width="8" height="8" rx="1.5" fill="white" opacity="0.50"/>
+      <rect x="13" y="3"  width="8" height="8" rx="1.5" fill="white" opacity="0.45"/>
+      <rect x="3"  y="13" width="8" height="8" rx="1.5" fill="white" opacity="0.45"/>
       <rect x="13" y="13" width="8" height="8" rx="1.5" fill="white" opacity="0.95"/>
     </svg>
   </div>
 )
 
-/* ── Theme ──────────────────────────────────────────────────────── */
+/* ── Theme hook ─────────────────────────────────────────────────── */
 const useTheme = () => {
   const [theme, setTheme] = useState<'dark'|'light'>(() => {
     try { return (localStorage.getItem('st-theme') as 'dark'|'light') || 'dark' } catch { return 'dark' }
@@ -62,7 +62,7 @@ const useTheme = () => {
   return { theme, toggle: () => setTheme(t => t === 'dark' ? 'light' : 'dark') }
 }
 
-/* ── Sidebar nav item ───────────────────────────────────────────── */
+/* ── Nav Item ───────────────────────────────────────────────────── */
 const SideNavItem = ({ item, onClose }: { item: typeof NAV_ITEMS[0]; onClose?: () => void }) => {
   const count = NAV_COUNTS[item.to]
   return (
@@ -70,37 +70,38 @@ const SideNavItem = ({ item, onClose }: { item: typeof NAV_ITEMS[0]; onClose?: (
       to={item.to}
       onClick={onClose}
       style={({ isActive }) => ({
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '0.55rem 0.75rem',
-        borderRadius: '0.65rem',
-        fontSize: '0.82rem', fontWeight: 500,
+        display: 'flex', alignItems: 'center', gap: 9,
+        padding: '0.52rem 0.7rem',
+        borderRadius: '0.6rem',
+        fontSize: '0.84rem', fontWeight: isActive ? 600 : 500,
         textDecoration: 'none',
-        transition: 'all 0.15s',
-        color: isActive ? '#0d2137' : 'rgba(255,255,255,0.60)',
+        letterSpacing: '0.005em',
+        transition: 'all 0.14s ease',
+        color: isActive ? '#07211e' : 'var(--tx2)',
         background: isActive
           ? 'linear-gradient(135deg, #2dd4bf 0%, #0d9488 100%)'
           : 'transparent',
-        boxShadow: isActive ? '0 4px 16px rgba(45,212,191,0.30)' : 'none',
+        boxShadow: isActive ? '0 3px 14px rgba(45,212,191,0.28)' : 'none',
       })}
     >
       {({ isActive }) => (
         <>
           <span style={{
-            width: 28, height: 28, borderRadius: 8,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-            background: isActive ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.06)',
+            width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: isActive ? 'rgba(255,255,255,0.22)' : 'var(--g2)',
           }}>
             <item.icon size={14} />
           </span>
-          <span style={{ flex: 1 }}>{item.label}</span>
+          <span style={{ flex: 1, lineHeight: 1 }}>{item.label}</span>
           {count !== undefined && (
             <span style={{
-              fontSize: '0.65rem', fontWeight: 700,
-              minWidth: 20, height: 20,
+              fontSize: '0.64rem', fontWeight: 700,
+              minWidth: 20, height: 18,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               borderRadius: '999px',
-              background: isActive ? 'rgba(255,255,255,0.25)' : 'rgba(45,212,191,0.20)',
-              color: isActive ? '#0d2137' : '#2dd4bf',
+              background: isActive ? 'rgba(255,255,255,0.25)' : 'rgba(45,212,191,0.16)',
+              color: isActive ? '#07211e' : '#2dd4bf',
               padding: '0 5px',
             }}>
               {count}
@@ -121,39 +122,45 @@ const Sidebar = ({ visibleNav, user, handleLogout, onClose }: {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', height: '100%',
-      background: 'rgba(13,17,23,0.95)',
+      background: 'var(--sidebar-bg)',
+      transition: 'background 0.3s ease',
     }}>
-      {/* Logo */}
+      {/* Header */}
       <div style={{
-        padding: '1.1rem 1rem',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        padding: '1rem 0.9rem',
+        borderBottom: '1px solid var(--gb)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 8,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Logo size={34} />
-          <div>
-            <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'rgba(255,255,255,0.92)', lineHeight: 1.1 }}>SteelTrack</div>
-            <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#2dd4bf', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Logistics &amp; Dispatch</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <LogoIcon size={34} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--tx1)', lineHeight: 1.15, whiteSpace: 'nowrap' }}>SteelTrack</div>
+            <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--brand)', textTransform: 'uppercase', letterSpacing: '0.09em', whiteSpace: 'nowrap' }}>Logistics &amp; Dispatch</div>
           </div>
         </div>
-        <button onClick={toggle}
+        <button
+          onClick={toggle}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           style={{
-            width: 30, height: 30, borderRadius: 8,
-            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)',
+            width: 30, height: 30, borderRadius: 7, flexShrink: 0,
+            background: 'var(--g2)', border: '1px solid var(--gb)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', color: 'rgba(255,255,255,0.50)',
-          }}>
+            cursor: 'pointer', color: 'var(--tx2)',
+            transition: 'all 0.15s ease',
+          }}
+        >
           {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
         </button>
       </div>
 
-      {/* Modules label */}
-      <div style={{ padding: '1rem 1rem 0.4rem', fontSize: '0.62rem', fontWeight: 700, color: 'rgba(255,255,255,0.28)', letterSpacing: '0.10em', textTransform: 'uppercase' }}>
-        Modules
+      {/* Section label */}
+      <div style={{ padding: '0.85rem 0.9rem 0.3rem', fontSize: '0.6rem', fontWeight: 700, color: 'var(--tx4)', letterSpacing: '0.11em', textTransform: 'uppercase' }}>
+        Navigation
       </div>
 
       {/* Nav */}
-      <nav style={{ flex: 1, padding: '0.2rem 0.6rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <nav style={{ flex: 1, padding: '0.15rem 0.5rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 1 }}>
         {visibleNav.map(item => (
           <SideNavItem key={item.to} item={item} onClose={onClose} />
         ))}
@@ -161,35 +168,40 @@ const Sidebar = ({ visibleNav, user, handleLogout, onClose }: {
 
       {/* User footer */}
       {user && pill && (
-        <div style={{ padding: '0.6rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ padding: '0.55rem 0.5rem 0.55rem', borderTop: '1px solid var(--gb)' }}>
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '0.6rem 0.75rem', borderRadius: '0.65rem',
-            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
+            display: 'flex', alignItems: 'center', gap: 9,
+            padding: '0.55rem 0.7rem', borderRadius: '0.6rem',
+            background: 'var(--g1)', border: '1px solid var(--gb)',
           }}>
+            {/* Avatar */}
             <div style={{
-              width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-              background: 'linear-gradient(135deg, #2dd4bf, #0d9488)',
+              width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+              background: 'linear-gradient(140deg, #2dd4bf, #0d9488)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.7rem', fontWeight: 800, color: '#0d2137',
-              boxShadow: '0 0 10px rgba(45,212,191,0.40)',
+              fontSize: '0.68rem', fontWeight: 800, color: '#07211e',
+              boxShadow: '0 0 10px rgba(45,212,191,0.35)',
             }}>
               {user.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'rgba(255,255,255,0.88)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div style={{ fontSize: '0.80rem', fontWeight: 600, color: 'var(--tx1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 }}>
                 {user.name}
               </div>
-              <div style={{ fontSize: '0.62rem', fontWeight: 600, color: pill.text }}>{pill.label}</div>
+              <div style={{ fontSize: '0.62rem', fontWeight: 600, color: pill.color, marginTop: 2 }}>{pill.label}</div>
             </div>
-            <button onClick={handleLogout} title="Sign Out"
+            <button
+              onClick={handleLogout}
+              title="Sign Out"
               style={{
-                padding: '0.35rem 0.6rem', borderRadius: 8,
-                background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)',
-                cursor: 'pointer', fontSize: '0.65rem', fontWeight: 700,
-                color: '#f87171', letterSpacing: '0.02em',
-              }}>
-              Sign Out
+                padding: '0.3rem 0.55rem', borderRadius: 6, flexShrink: 0,
+                background: 'rgba(248,113,113,0.10)', border: '1px solid rgba(248,113,113,0.22)',
+                cursor: 'pointer', color: '#f87171',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.14s ease',
+              }}
+            >
+              <LogOut size={13} />
             </button>
           </div>
         </div>
@@ -202,28 +214,32 @@ const Sidebar = ({ visibleNav, user, handleLogout, onClose }: {
 const BottomTabBar = ({ visibleNav }: { visibleNav: typeof NAV_ITEMS }) => (
   <nav style={{
     display: 'flex', position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 30,
-    background: 'rgba(13,17,23,0.97)', borderTop: '1px solid rgba(255,255,255,0.07)',
-    paddingBottom: 'env(safe-area-inset-bottom)', minHeight: 56,
+    background: 'var(--tab-bar-bg)',
+    borderTop: '1px solid var(--gb)',
+    backdropFilter: 'blur(20px)',
+    paddingBottom: 'env(safe-area-inset-bottom)', minHeight: 58,
   }} className="lg-hide">
     {visibleNav.filter(i => i.to !== '/dashboard').slice(0, 5).map(item => (
       <NavLink key={item.to} to={item.to}
         style={({ isActive }) => ({
           flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          gap: 2, padding: '0.4rem 0', textDecoration: 'none',
-          color: isActive ? '#2dd4bf' : 'rgba(255,255,255,0.35)',
-          fontSize: '0.58rem', fontWeight: 600,
+          gap: 3, padding: '0.35rem 0', textDecoration: 'none',
+          color: isActive ? 'var(--brand)' : 'var(--tx3)',
+          fontSize: '0.58rem', fontWeight: 600, transition: 'color 0.14s',
+          letterSpacing: '0.02em',
         })}
       >
         {({ isActive }) => (
           <>
             <span style={{
-              width: 36, height: 26, borderRadius: 10,
+              width: 38, height: 26, borderRadius: 10,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: isActive ? 'rgba(45,212,191,0.15)' : 'transparent',
+              background: isActive ? 'rgba(45,212,191,0.14)' : 'transparent',
+              transition: 'background 0.14s',
             }}>
-              <item.icon size={18} strokeWidth={isActive ? 2.2 : 1.6} />
+              <item.icon size={18} strokeWidth={isActive ? 2.3 : 1.7} />
             </span>
-            <span>{item.label}</span>
+            <span style={{ textTransform: 'uppercase', fontSize: '0.55rem', letterSpacing: '0.04em' }}>{item.label}</span>
           </>
         )}
       </NavLink>
@@ -241,72 +257,94 @@ export const AppLayout = () => {
   const visibleNav = NAV_ITEMS.filter(n => user && n.roles.includes(user.role))
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#0b1015', color: 'rgba(255,255,255,0.88)' }}>
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
 
-      {/* Desktop sidebar */}
-      <aside style={{
-        width: 230, flexShrink: 0,
-        borderRight: '1px solid rgba(255,255,255,0.06)',
-        display: 'none',  // overridden by className below
-      }} className="desktop-sidebar">
-        <style>{`.desktop-sidebar { display: flex !important; flex-direction: column; } @media (max-width: 1023px) { .desktop-sidebar { display: none !important; } .lg-hide { display: flex !important; } } @media (min-width: 1024px) { .lg-hide { display: none !important; } }`}</style>
+      {/* ── Desktop sidebar ── */}
+      <aside
+        style={{ width: 228, flexShrink: 0, borderRight: '1px solid var(--gb)', display: 'none' }}
+        className="desktop-sidebar"
+      >
+        <style>{`
+          .desktop-sidebar { display:flex !important; flex-direction:column; }
+          @media (max-width:1023px) {
+            .desktop-sidebar { display:none !important; }
+            .lg-hide { display:flex !important; }
+          }
+          @media (min-width:1024px) {
+            .lg-hide { display:none !important; }
+          }
+        `}</style>
         {user && <Sidebar visibleNav={visibleNav} user={user} handleLogout={handleLogout} />}
       </aside>
 
-      {/* Mobile drawer overlay */}
+      {/* ── Mobile drawer ── */}
       {drawerOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex' }}>
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)' }}
-            onClick={() => setDrawerOpen(false)} />
+          <div
+            style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.60)' }}
+            onClick={() => setDrawerOpen(false)}
+          />
           <aside style={{
             position: 'relative', width: 240, height: '100%',
-            borderRight: '1px solid rgba(255,255,255,0.07)',
-            boxShadow: '4px 0 40px rgba(0,0,0,0.50)',
+            borderRight: '1px solid var(--gb)',
+            boxShadow: '6px 0 48px rgba(0,0,0,0.55)',
             zIndex: 1,
           }}>
-            <button onClick={() => setDrawerOpen(false)}
+            <button
+              onClick={() => setDrawerOpen(false)}
               style={{
-                position: 'absolute', top: 14, right: 14, zIndex: 2,
-                background: 'rgba(255,255,255,0.06)', border: 'none',
-                borderRadius: 8, padding: 6, cursor: 'pointer', color: 'rgba(255,255,255,0.60)',
-              }}>
-              <X size={16} />
+                position: 'absolute', top: 13, right: 13, zIndex: 2,
+                background: 'var(--g2)', border: '1px solid var(--gb)',
+                borderRadius: 7, padding: 6, cursor: 'pointer', color: 'var(--tx2)',
+                display: 'flex', alignItems: 'center',
+              }}
+            >
+              <X size={15} />
             </button>
             {user && <Sidebar visibleNav={visibleNav} user={user} handleLogout={handleLogout} onClose={() => setDrawerOpen(false)} />}
           </aside>
         </div>
       )}
 
-      {/* Main column */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* ── Main column ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
 
         {/* Mobile topbar */}
-        <header style={{
-          display: 'none',
-          alignItems: 'center', gap: 10,
-          padding: '0.65rem 1rem',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
-          background: 'rgba(13,17,23,0.97)',
-          flexShrink: 0,
-        }} className="mobile-topbar">
-          <style>{`.mobile-topbar { display: none !important; } @media (max-width: 1023px) { .mobile-topbar { display: flex !important; } }`}</style>
-          <button onClick={() => setDrawerOpen(true)}
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, padding: '6px 8px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ display: 'block', width: 16, height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.80)' }} />
-            <span style={{ display: 'block', width: 11, height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.80)' }} />
-            <span style={{ display: 'block', width: 16, height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.80)' }} />
+        <header
+          style={{
+            display: 'none', alignItems: 'center', gap: 10,
+            padding: '0.6rem 1rem',
+            borderBottom: '1px solid var(--gb)',
+            background: 'var(--topbar-bg)',
+            backdropFilter: 'blur(18px)',
+            flexShrink: 0,
+          }}
+          className="mobile-topbar"
+        >
+          <style>{`.mobile-topbar { display:none !important; } @media (max-width:1023px) { .mobile-topbar { display:flex !important; } }`}</style>
+          <button
+            onClick={() => setDrawerOpen(true)}
+            style={{
+              background: 'var(--g2)', border: '1px solid var(--gb)',
+              borderRadius: 8, padding: '6px 7px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', color: 'var(--tx1)',
+            }}
+          >
+            <Menu size={18} />
           </button>
-          <Logo size={26} />
-          <div>
-            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'rgba(255,255,255,0.92)' }}>SteelTrack</div>
-            <div style={{ fontSize: '0.58rem', color: '#2dd4bf', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Logistics</div>
+          <LogoIcon size={26} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--tx1)', whiteSpace: 'nowrap' }}>SteelTrack</div>
+            <div style={{ fontSize: '0.57rem', color: 'var(--brand)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Logistics</div>
           </div>
           {user && (
             <span style={{
-              marginLeft: 'auto', fontSize: '0.62rem', fontWeight: 700,
-              padding: '0.25rem 0.6rem', borderRadius: 999,
-              background: ROLE_PILL[user.role]?.bg ?? 'rgba(255,255,255,0.1)',
-              color: ROLE_PILL[user.role]?.text ?? '#fff',
+              marginLeft: 'auto', flexShrink: 0,
+              fontSize: '0.60rem', fontWeight: 700,
+              padding: '0.22rem 0.55rem', borderRadius: 999,
+              background: ROLE_PILL[user.role]?.bg ?? 'var(--g2)',
+              color: ROLE_PILL[user.role]?.color ?? 'var(--tx1)',
+              border: `1px solid ${ROLE_PILL[user.role]?.color ?? 'var(--gb)'}33`,
             }}>
               {ROLE_PILL[user.role]?.label ?? user.role}
             </span>

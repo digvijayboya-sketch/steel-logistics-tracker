@@ -4,330 +4,155 @@ import { useAuthStore } from '@/store/appStore'
 import { toast } from 'sonner'
 
 const FEATURES = [
-  { icon: '📋', label: 'DO Management',     desc: 'Full lifecycle from supplier to customer' },
-  { icon: '🏭', label: 'SC Queue Tracker',  desc: 'Live service centre status & queue position' },
-  { icon: '💸', label: 'Field Expense Log', desc: 'Photo-tagged cash payment reconciliation' },
-  { icon: '🚛', label: 'Delivery Tracker',  desc: 'Real-time route & location change log' },
+  { icon: '📋', label: 'DO Management',      desc: 'Full lifecycle from supplier to customer' },
+  { icon: '🏭', label: 'SC Queue Tracker',   desc: 'Live service centre status & queue position' },
+  { icon: '💸', label: 'Field Expense Log',  desc: 'Photo-tagged cash payment reconciliation' },
+  { icon: '🚛', label: 'Delivery Tracker',   desc: 'Real-time route & location change log' },
 ]
 
 const STATS = [
   { value: '100%', label: 'DO Traceability' },
-  { value: '0 ₹', label: 'Untracked Spend' },
-  { value: 'Live', label: 'SC Queue View' },
+  { value: '₹0',   label: 'Untracked Spend' },
+  { value: 'Live', label: 'SC Queue View'   },
 ]
 
-/* ─── Eye icon ──────────────────────────────────────────────────────────── */
 const EyeIcon = ({ open }: { open: boolean }) =>
   open ? (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
       <circle cx="12" cy="12" r="3"/>
     </svg>
   ) : (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
       <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
       <line x1="1" y1="1" x2="23" y2="23"/>
     </svg>
   )
 
-/* ─── Component ─────────────────────────────────────────────────────────── */
 export const LoginPage = () => {
-  const { login } = useAuthStore()
-  const navigate   = useNavigate()
+  const { login }   = useAuthStore()
+  const navigate    = useNavigate()
+  const [email,     setEmail]    = useState('')
+  const [password,  setPassword] = useState('')
+  const [showPw,    setShowPw]   = useState(false)
+  const [loading,   setLoading]  = useState(false)
+  const [success,   setSuccess]  = useState(false)
+  const [error,     setError]    = useState('')
 
-  const [email,    setEmail]    = useState('')
-  const [password, setPassword] = useState('')
-  const [showPw,   setShowPw]   = useState(false)
-  const [loading,  setLoading]  = useState(false)
-  const [success,  setSuccess]  = useState(false)
-  const [error,    setError]    = useState('')
-
-  /* ── Auth logic ── */
   const attemptLogin = (em: string, pw: string) => {
-    setLoading(true)
-    setError('')
+    setLoading(true); setError('')
     setTimeout(() => {
       const ok = login(em, pw)
       setLoading(false)
-      if (ok) {
-        setSuccess(true)
-        setTimeout(() => navigate('/dashboard'), 600)
-      } else {
-        setError('Invalid email or password.')
-        toast.error('Invalid credentials')
-      }
+      if (ok) { setSuccess(true); setTimeout(() => navigate('/dashboard'), 600) }
+      else { setError('Invalid email or password. Please try again.'); toast.error('Invalid credentials') }
     }, 450)
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    attemptLogin(email, password)
-  }
-
-  /* ── Styles ── */
-  const s: Record<string, React.CSSProperties> = {
-    /* page */
-    page: {
-      minHeight: '100dvh',
-      display: 'flex',
-      background: 'radial-gradient(ellipse 80% 60% at 20% 40%, rgba(45,212,191,.18) 0%, transparent 60%), radial-gradient(ellipse 60% 50% at 80% 70%, rgba(99,102,241,.14) 0%, transparent 55%), #0b0f1a',
-      fontFamily: 'Inter, system-ui, sans-serif',
-      overflow: 'hidden',
-    },
-    /* ── LEFT HERO ── */
-    hero: {
-      flex: 1,
-      display: 'none',
-      flexDirection: 'column' as const,
-      justifyContent: 'center',
-      padding: '3rem 3.5rem',
-      position: 'relative' as const,
-      overflow: 'hidden',
-    },
-    heroInner: {
-      position: 'relative' as const,
-      zIndex: 1,
-    },
-    badge: {
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '0.4rem',
-      padding: '0.3rem 0.85rem',
-      borderRadius: '9999px',
-      background: 'rgba(45,212,191,.12)',
-      border: '1px solid rgba(45,212,191,.25)',
-      color: '#2dd4bf',
-      fontSize: '0.72rem',
-      fontWeight: 600,
-      letterSpacing: '.05em',
-      textTransform: 'uppercase' as const,
-      marginBottom: '1.5rem',
-    },
-    dot: {
-      width: 7,
-      height: 7,
-      borderRadius: '50%',
-      background: '#2dd4bf',
-      animation: 'pulse 2s infinite',
-    },
-    heroTitle: {
-      fontSize: 'clamp(2rem, 3vw, 2.8rem)',
-      fontWeight: 800,
-      lineHeight: 1.15,
-      color: '#f1f5f9',
-      marginBottom: '1rem',
-    },
-    heroAccent: {
-      background: 'linear-gradient(135deg, #2dd4bf, #6366f1)',
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
-    },
-    heroSub: {
-      fontSize: '1rem',
-      color: 'rgba(241,245,249,.55)',
-      lineHeight: 1.65,
-      maxWidth: '380px',
-      marginBottom: '2rem',
-    },
-    statRow: {
-      display: 'flex',
-      gap: '0.75rem',
-      flexWrap: 'wrap' as const,
-      marginBottom: '2.5rem',
-    },
-    stat: {
-      padding: '0.45rem 1rem',
-      borderRadius: '9999px',
-      background: 'rgba(255,255,255,.05)',
-      border: '1px solid rgba(255,255,255,.1)',
-      display: 'flex',
-      gap: '0.4rem',
-      alignItems: 'baseline',
-    },
-    statVal: { color: '#2dd4bf', fontWeight: 700, fontSize: '0.85rem' },
-    statLbl: { color: 'rgba(241,245,249,.45)', fontSize: '0.72rem' },
-    featureList: { display: 'flex', flexDirection: 'column' as const, gap: '0.85rem' },
-    featureItem: {
-      display: 'flex',
-      gap: '0.85rem',
-      alignItems: 'flex-start',
-      padding: '0.75rem 1rem',
-      borderRadius: '0.75rem',
-      background: 'rgba(255,255,255,.03)',
-      border: '1px solid rgba(255,255,255,.06)',
-      backdropFilter: 'blur(4px)',
-    },
-    featureIcon: { fontSize: '1.15rem', lineHeight: 1, flexShrink: 0, marginTop: 2 },
-    featureName: { fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', marginBottom: 2 },
-    featureDesc: { fontSize: '0.73rem', color: 'rgba(241,245,249,.4)', lineHeight: 1.4 },
-    /* orbs */
-    orb1: {
-      position: 'absolute' as const, top: '-10%', right: '-5%',
-      width: 320, height: 320, borderRadius: '50%',
-      background: 'radial-gradient(circle, rgba(99,102,241,.25) 0%, transparent 70%)',
-      filter: 'blur(40px)', pointerEvents: 'none' as const,
-    },
-    orb2: {
-      position: 'absolute' as const, bottom: '10%', left: '-8%',
-      width: 260, height: 260, borderRadius: '50%',
-      background: 'radial-gradient(circle, rgba(45,212,191,.2) 0%, transparent 70%)',
-      filter: 'blur(40px)', pointerEvents: 'none' as const,
-    },
-    /* ── RIGHT PANEL ── */
-    right: {
-      width: '100%',
-      maxWidth: 460,
-      display: 'flex',
-      flexDirection: 'column' as const,
-      justifyContent: 'center',
-      padding: '2rem 1.5rem',
-      margin: '0 auto',
-    },
-    glass: {
-      background: 'rgba(255,255,255,.04)',
-      border: '1px solid rgba(255,255,255,.09)',
-      borderRadius: '1.25rem',
-      backdropFilter: 'blur(20px)',
-      padding: '2rem',
-      boxShadow: '0 24px 64px rgba(0,0,0,.45)',
-    },
-    logoWrap: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '0.7rem',
-      marginBottom: '1.75rem',
-    },
-    logoBox: {
-      width: 42, height: 42,
-      borderRadius: '0.75rem',
-      background: 'linear-gradient(135deg, #2dd4bf, #0d9488)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      boxShadow: '0 4px 14px rgba(45,212,191,.35)',
-      flexShrink: 0,
-    },
-    logoText: { lineHeight: 1 },
-    appName: { fontSize: '1.05rem', fontWeight: 700, color: '#f1f5f9' },
-    appSub:  { fontSize: '0.72rem', color: 'rgba(241,245,249,.45)', marginTop: 1 },
-    label: {
-      display: 'block',
-      fontSize: '0.75rem',
-      fontWeight: 500,
-      color: 'rgba(241,245,249,.6)',
-      marginBottom: '0.35rem',
-    },
-    input: {
-      width: '100%',
-      padding: '0.65rem 0.9rem',
-      borderRadius: '0.65rem',
-      border: '1px solid rgba(255,255,255,.1)',
-      background: 'rgba(255,255,255,.05)',
-      color: '#f1f5f9',
-      fontSize: '0.88rem',
-      outline: 'none',
-      transition: 'border .18s',
-      boxSizing: 'border-box' as const,
-    },
-    pwWrap: { position: 'relative' as const },
-    eyeBtn: {
-      position: 'absolute' as const,
-      right: '0.75rem',
-      top: '50%',
-      transform: 'translateY(-50%)',
-      background: 'none',
-      border: 'none',
-      padding: 0,
-      color: 'rgba(241,245,249,.35)',
-      cursor: 'pointer',
-      display: 'flex',
-      alignItems: 'center',
-    },
-    errorBox: {
-      padding: '0.65rem 0.9rem',
-      borderRadius: '0.65rem',
-      background: 'rgba(239,68,68,.1)',
-      border: '1px solid rgba(239,68,68,.25)',
-      color: '#fca5a5',
-      fontSize: '0.78rem',
-      lineHeight: 1.45,
-    },
-    signInBtn: (loading: boolean, success: boolean): React.CSSProperties => ({
-      width: '100%',
-      padding: '0.75rem',
-      borderRadius: '0.7rem',
-      border: 'none',
-      background: success
-        ? 'linear-gradient(135deg,#22c55e,#16a34a)'
-        : 'linear-gradient(135deg,#2dd4bf,#0d9488)',
-      color: '#fff',
-      fontSize: '0.88rem',
-      fontWeight: 700,
-      cursor: loading ? 'not-allowed' : 'pointer',
-      opacity: loading ? 0.75 : 1,
-      transition: 'all .2s ease',
-      boxShadow: '0 4px 16px rgba(45,212,191,.3)',
-      letterSpacing: '.02em',
-      position: 'relative' as const,
-      overflow: 'hidden',
-    }),
-    footer: {
-      textAlign: 'center' as const,
-      fontSize: '0.68rem',
-      color: 'rgba(241,245,249,.2)',
-      marginTop: '1.25rem',
-    },
   }
 
   return (
     <>
       <style>{`
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
-        .login-input:focus {
-          border-color: rgba(45,212,191,.55) !important;
-          box-shadow: 0 0 0 3px rgba(45,212,191,.1);
+        @keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:.3} }
+        @keyframes slideR { from{opacity:0;transform:translateX(18px)} to{opacity:1;transform:translateX(0)} }
+        @keyframes slideU { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+        .lp-input:focus {
+          border-color: rgba(45,212,191,.7) !important;
+          box-shadow: 0 0 0 3px rgba(45,212,191,.14);
         }
-        .sign-btn:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(45,212,191,.4) !important; }
+        .lp-input { transition: border-color .16s, box-shadow .16s; }
+        .lp-submit:not(:disabled):hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 28px rgba(45,212,191,.45) !important;
+          filter: brightness(1.08);
+        }
+        .lp-feat:hover {
+          background: rgba(45,212,191,.06) !important;
+          border-color: rgba(45,212,191,.20) !important;
+        }
         @media (min-width:860px) {
-          .login-hero  { display:flex !important; }
-          .login-right { margin:0 !important; border-left: 1px solid rgba(255,255,255,.05); }
+          .lp-hero  { display:flex !important; }
+          .lp-right { margin:0 !important; border-left:1px solid rgba(255,255,255,.06); }
         }
       `}</style>
 
-      <div style={s.page}>
+      <div style={{
+        minHeight: '100dvh', display: 'flex',
+        background:
+          'radial-gradient(ellipse 80% 60% at 18% 38%, rgba(45,212,191,.16) 0%, transparent 58%),' +
+          'radial-gradient(ellipse 60% 55% at 82% 72%, rgba(99,102,241,.13) 0%, transparent 55%),' +
+          '#0c1524',
+        fontFamily: "'Inter', system-ui, sans-serif",
+        overflow: 'hidden',
+      }}>
+
         {/* ── LEFT HERO ── */}
-        <div style={s.hero} className="login-hero">
-          <div style={s.orb1} />
-          <div style={s.orb2} />
-          <div style={s.heroInner}>
-            <div style={s.badge}>
-              <span style={s.dot} />
+        <div style={{
+          flex: 1, display: 'none', flexDirection: 'column',
+          justifyContent: 'center', padding: '3rem 3.5rem',
+          position: 'relative', overflow: 'hidden',
+        }} className="lp-hero">
+          {/* Background orbs */}
+          <div style={{ position:'absolute', top:'-8%', right:'-6%', width:360, height:360, borderRadius:'50%', background:'radial-gradient(circle,rgba(99,102,241,.22) 0%,transparent 70%)', filter:'blur(48px)', pointerEvents:'none' }} />
+          <div style={{ position:'absolute', bottom:'8%', left:'-10%', width:280, height:280, borderRadius:'50%', background:'radial-gradient(circle,rgba(45,212,191,.18) 0%,transparent 70%)', filter:'blur(48px)', pointerEvents:'none' }} />
+
+          <div style={{ position:'relative', zIndex:1, animation:'slideR .5s ease both' }}>
+            {/* Live badge */}
+            <div style={{
+              display:'inline-flex', alignItems:'center', gap:6,
+              padding:'0.28rem 0.8rem', borderRadius:'9999px',
+              background:'rgba(45,212,191,.10)', border:'1px solid rgba(45,212,191,.22)',
+              color:'#2dd4bf', fontSize:'0.70rem', fontWeight:700,
+              letterSpacing:'.07em', textTransform:'uppercase', marginBottom:'1.4rem',
+            }}>
+              <span style={{ width:7, height:7, borderRadius:'50%', background:'#2dd4bf', animation:'pulse 2s infinite', flexShrink:0 }} />
               Live Operations
             </div>
-            <h1 style={s.heroTitle}>
+
+            <h1 style={{
+              fontSize:'clamp(2rem,3vw,2.75rem)', fontWeight:800,
+              lineHeight:1.15, color:'#f0f6fc', marginBottom:'0.9rem',
+              letterSpacing:'-0.025em',
+            }}>
               Track every coil.<br />
-              <span style={s.heroAccent}>End-to-end.</span>
+              <span style={{
+                background:'linear-gradient(135deg,#2dd4bf,#6366f1)',
+                WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent',
+              }}>End-to-end.</span>
             </h1>
-            <p style={s.heroSub}>
-              From supplier Delivery Order to final customer drop — one platform for your
-              entire steel logistics operation.
+
+            <p style={{ fontSize:'0.9375rem', color:'rgba(240,246,252,.60)', lineHeight:1.7, maxWidth:'380px', marginBottom:'1.75rem' }}>
+              From supplier Delivery Order to final customer drop — one platform
+              for your entire steel logistics operation.
             </p>
-            <div style={s.statRow}>
+
+            {/* Stats row */}
+            <div style={{ display:'flex', gap:'0.65rem', flexWrap:'wrap', marginBottom:'2.25rem' }}>
               {STATS.map(st => (
-                <div key={st.label} style={s.stat}>
-                  <span style={s.statVal}>{st.value}</span>
-                  <span style={s.statLbl}>{st.label}</span>
+                <div key={st.label} style={{
+                  padding:'0.4rem 0.9rem', borderRadius:'9999px',
+                  background:'rgba(255,255,255,.05)', border:'1px solid rgba(255,255,255,.09)',
+                  display:'flex', gap:'0.38rem', alignItems:'baseline',
+                }}>
+                  <span style={{ color:'#2dd4bf', fontWeight:700, fontSize:'0.82rem' }}>{st.value}</span>
+                  <span style={{ color:'rgba(240,246,252,.45)', fontSize:'0.70rem' }}>{st.label}</span>
                 </div>
               ))}
             </div>
-            <div style={s.featureList}>
+
+            {/* Feature list */}
+            <div style={{ display:'flex', flexDirection:'column', gap:'0.6rem' }}>
               {FEATURES.map(f => (
-                <div key={f.label} style={s.featureItem}>
-                  <span style={s.featureIcon}>{f.icon}</span>
+                <div key={f.label} className="lp-feat" style={{
+                  display:'flex', gap:'0.8rem', alignItems:'flex-start',
+                  padding:'0.7rem 0.9rem', borderRadius:'0.8rem',
+                  background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.07)',
+                  transition:'all .18s ease', cursor:'default',
+                }}>
+                  <span style={{ fontSize:'1.1rem', lineHeight:1, flexShrink:0, marginTop:2 }}>{f.icon}</span>
                   <div>
-                    <div style={s.featureName}>{f.label}</div>
-                    <div style={s.featureDesc}>{f.desc}</div>
+                    <div style={{ fontSize:'0.84rem', fontWeight:600, color:'#f0f6fc', marginBottom:2 }}>{f.label}</div>
+                    <div style={{ fontSize:'0.75rem', color:'rgba(240,246,252,.45)', lineHeight:1.45 }}>{f.desc}</div>
                   </div>
                 </div>
               ))}
@@ -336,73 +161,132 @@ export const LoginPage = () => {
         </div>
 
         {/* ── RIGHT PANEL ── */}
-        <div style={s.right} className="login-right">
-          <div style={s.glass}>
+        <div style={{
+          width:'100%', maxWidth:440,
+          display:'flex', flexDirection:'column',
+          justifyContent:'center', padding:'2rem 1.5rem',
+          margin:'0 auto',
+        }} className="lp-right">
+          <div style={{
+            background:'rgba(255,255,255,.05)',
+            border:'1px solid rgba(255,255,255,.10)',
+            borderRadius:'1.25rem',
+            backdropFilter:'blur(24px)',
+            padding:'2rem 1.75rem',
+            boxShadow:'0 28px 72px rgba(0,0,0,.50)',
+            animation:'slideU .4s ease both',
+          }}>
             {/* Logo */}
-            <div style={s.logoWrap}>
-              <div style={s.logoBox}>
-                <svg viewBox="0 0 24 24" fill="none" width="22" height="22">
-                  <rect x="3" y="3" width="8" height="8" rx="1.5" fill="white" opacity="0.9"/>
-                  <rect x="13" y="3" width="8" height="8" rx="1.5" fill="white" opacity="0.55"/>
-                  <rect x="3" y="13" width="8" height="8" rx="1.5" fill="white" opacity="0.55"/>
-                  <rect x="13" y="13" width="8" height="8" rx="1.5" fill="white" opacity="0.9"/>
+            <div style={{ display:'flex', alignItems:'center', gap:'0.65rem', marginBottom:'1.6rem' }}>
+              <div style={{
+                width:40, height:40, borderRadius:'0.7rem', flexShrink:0,
+                background:'linear-gradient(140deg,#2dd4bf,#0d9488)',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                boxShadow:'0 4px 16px rgba(45,212,191,.38)',
+              }}>
+                <svg viewBox="0 0 24 24" fill="none" width="20" height="20">
+                  <rect x="3"  y="3"  width="8" height="8" rx="1.5" fill="white" opacity="0.95"/>
+                  <rect x="13" y="3"  width="8" height="8" rx="1.5" fill="white" opacity="0.45"/>
+                  <rect x="3"  y="13" width="8" height="8" rx="1.5" fill="white" opacity="0.45"/>
+                  <rect x="13" y="13" width="8" height="8" rx="1.5" fill="white" opacity="0.95"/>
                 </svg>
               </div>
-              <div style={s.logoText}>
-                <div style={s.appName}>SteelTrack</div>
-                <div style={s.appSub}>Logistics & Dispatch Tracker</div>
+              <div>
+                <div style={{ fontSize:'1.0rem', fontWeight:700, color:'#f0f6fc', lineHeight:1.2 }}>SteelTrack</div>
+                <div style={{ fontSize:'0.68rem', color:'rgba(240,246,252,.48)', marginTop:1 }}>Logistics &amp; Dispatch Tracker</div>
               </div>
             </div>
 
+            <h2 style={{ fontSize:'1.15rem', fontWeight:700, color:'#f0f6fc', marginBottom:'0.25rem', letterSpacing:'-0.015em' }}>Welcome back</h2>
+            <p style={{ fontSize:'0.82rem', color:'rgba(240,246,252,.50)', marginBottom:'1.4rem', lineHeight:1.5 }}>Sign in to access your dashboard</p>
+
             {/* Form */}
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            <form onSubmit={e => { e.preventDefault(); attemptLogin(email, password) }}
+              style={{ display:'flex', flexDirection:'column', gap:'0.8rem' }}>
               <div>
-                <label style={s.label}>Email</label>
+                <label style={{ display:'block', fontSize:'0.78rem', fontWeight:600, color:'rgba(240,246,252,.72)', marginBottom:'0.3rem' }}>Email address</label>
                 <input
-                  className="login-input"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
+                  className="lp-input"
+                  type="email" autoComplete="email" required
+                  value={email} onChange={e => setEmail(e.target.value)}
                   placeholder="your@email.com"
-                  style={s.input}
+                  style={{
+                    width:'100%', padding:'0.62rem 0.875rem', borderRadius:'0.65rem',
+                    border:'1px solid rgba(255,255,255,.14)', background:'rgba(255,255,255,.07)',
+                    color:'#f0f6fc', fontSize:'0.875rem', outline:'none',
+                    boxSizing:'border-box',
+                  }}
                 />
               </div>
+
               <div>
-                <label style={s.label}>Password</label>
-                <div style={s.pwWrap}>
+                <label style={{ display:'block', fontSize:'0.78rem', fontWeight:600, color:'rgba(240,246,252,.72)', marginBottom:'0.3rem' }}>Password</label>
+                <div style={{ position:'relative' }}>
                   <input
-                    className="login-input"
+                    className="lp-input"
                     type={showPw ? 'text' : 'password'}
-                    autoComplete="current-password"
-                    required
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
+                    autoComplete="current-password" required
+                    value={password} onChange={e => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    style={{ ...s.input, paddingRight: '2.5rem' }}
+                    style={{
+                      width:'100%', padding:'0.62rem 2.6rem 0.62rem 0.875rem', borderRadius:'0.65rem',
+                      border:'1px solid rgba(255,255,255,.14)', background:'rgba(255,255,255,.07)',
+                      color:'#f0f6fc', fontSize:'0.875rem', outline:'none',
+                      boxSizing:'border-box',
+                    }}
                   />
-                  <button type="button" style={s.eyeBtn} onClick={() => setShowPw(v => !v)} aria-label="Toggle password">
+                  <button type="button" onClick={() => setShowPw(v => !v)}
+                    style={{
+                      position:'absolute', right:'0.75rem', top:'50%', transform:'translateY(-50%)',
+                      background:'none', border:'none', padding:0,
+                      color:'rgba(240,246,252,.38)', cursor:'pointer',
+                      display:'flex', alignItems:'center',
+                    }}
+                  >
                     <EyeIcon open={showPw} />
                   </button>
                 </div>
               </div>
 
-              {error && <div style={s.errorBox}>{error}</div>}
+              {error && (
+                <div style={{
+                  padding:'0.6rem 0.875rem', borderRadius:'0.6rem',
+                  background:'rgba(248,113,113,.10)', border:'1px solid rgba(248,113,113,.25)',
+                  color:'#fca5a5', fontSize:'0.80rem', lineHeight:1.5,
+                }}>
+                  {error}
+                </div>
+              )}
 
               <button
                 type="submit"
-                className="sign-btn"
+                className="lp-submit"
                 disabled={loading || success}
-                style={s.signInBtn(loading, success)}
+                style={{
+                  width:'100%', padding:'0.72rem',
+                  borderRadius:'0.65rem', border:'none',
+                  background: success
+                    ? 'linear-gradient(135deg,#22c55e,#16a34a)'
+                    : 'linear-gradient(135deg,#2dd4bf,#0d9488)',
+                  color: success ? '#fff' : '#07211e',
+                  fontSize:'0.9rem', fontWeight:700,
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.75 : 1,
+                  transition:'all .2s ease',
+                  boxShadow:'0 4px 18px rgba(45,212,191,.32)',
+                  letterSpacing:'.015em',
+                }}
               >
-                {success ? '✓ Redirecting…' : loading ? 'Signing in…' : 'Sign In →'}
+                {success ? '✓ Redirecting…' : loading ? 'Signing in…' : 'Sign in →'}
               </button>
             </form>
           </div>
 
-          <div style={s.footer}>
-            Steel Logistics & Dispatch Tracker v1.0
+          <div style={{
+            textAlign:'center', fontSize:'0.68rem',
+            color:'rgba(240,246,252,.22)', marginTop:'1.1rem',
+          }}>
+            Steel Logistics &amp; Dispatch Tracker v1.0
           </div>
         </div>
       </div>
