@@ -38,6 +38,7 @@ export const LogQueuePage = () => {
     estimated_processing_minutes: '',
     notes: '',
   })
+  const [coords, setCoords] = useState<{lat?:number;lng?:number}>({})
   const [gpsStatus, setGpsStatus] = useState<'idle'|'fetching'|'got'|'error'>('idle')
   const [submitting, setSubmitting] = useState(false)
   const setField = (k:string,v:string)=>setForm(f=>({...f,[k]:v}))
@@ -45,7 +46,12 @@ export const LogQueuePage = () => {
   const fetchGPS = async () => {
     setGpsStatus('fetching')
     const c = await getCoords()
-    setGpsStatus(c.lat?'got':'error')
+    if (c.lat) {
+      setCoords({ lat: c.lat, lng: c.lng })
+      setGpsStatus('got')
+    } else {
+      setGpsStatus('error')
+    }
   }
 
   const handleSubmit = async (e:React.FormEvent) => {
@@ -55,24 +61,25 @@ export const LogQueuePage = () => {
     if (!form.service_type) { toast.error('Select service type'); return }
     setSubmitting(true)
     try {
-      const sc = serviceCentres.find(s=>s.id===form.service_centre_id)
-      const loggedById = isAdmin&&form.logged_as ? form.logged_as : user?.id??''
+      const loggedById = isAdmin && form.logged_as ? form.logged_as : (user?.id ?? '')
       await addQueueUpdate({
         job_id: form.job_id,
         service_centre_id: form.service_centre_id,
         service_type: form.service_type as ServiceType,
-        queue_number: form.queue_number||undefined,
+        queue_number: form.queue_number || undefined,
         checkin_time: new Date().toISOString(),
-        estimated_processing_minutes: form.estimated_processing_minutes ? parseInt(form.estimated_processing_minutes) : undefined,
-        notes: form.notes||undefined,
+        estimated_processing_minutes: form.estimated_processing_minutes
+          ? parseInt(form.estimated_processing_minutes)
+          : undefined,
+        notes: form.notes || undefined,
+        gps_lat: coords.lat,
+        gps_lng: coords.lng,
         logged_by: loggedById,
-        created_at: new Date().toISOString(),
-        service_centre: sc,
-      } as any)
+      })
       toast.success('Checked in at service centre')
       navigate('/queue')
-    } catch(e:any) {
-      toast.error(e.message??'Failed')
+    } catch(e:unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed')
     } finally { setSubmitting(false) }
   }
 
@@ -81,7 +88,7 @@ export const LogQueuePage = () => {
     borderRadius:'0.85rem', padding:'1.25rem', boxShadow:'var(--sh-card)', marginBottom:'1rem',
   }
   const selectedJob = jobs.find(j=>j.id===form.job_id)
-  const agents = profiles.filter(p=>p.role==='agent')
+  const agents = profiles.filter(p=>p.role==='agent'||(p.role as string)==='manager')
 
   return (
     <div style={{minHeight:'100%',padding:'1.5rem 1.75rem',maxWidth:640,margin:'0 auto'}}>
@@ -118,8 +125,8 @@ export const LogQueuePage = () => {
               <div>
                 <label style={lbl}>Logging On Behalf Of</label>
                 <select style={inp} value={form.logged_as} onChange={e=>setField('logged_as',e.target.value)}>
-                  <option value={user?.id??''}>{user?.name} (you)</option>
-                  {agents.map(a=><option key={a.id} value={a.id}>{a.full_name}</option>)}
+                  <option value={user?.id??''}>{user?.full_name} (you)</option>
+                  {agents.filter(a=>a.id!==user?.id).map(a=><option key={a.id} value={a.id}>{a.full_name}</option>)}
                 </select>
               </div>
             )}

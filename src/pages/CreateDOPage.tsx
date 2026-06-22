@@ -2,15 +2,16 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
 import { useDataStore } from '@/store/dataStore'
-import { ArrowLeft, Plus, Trash2, FileText, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, FileText } from 'lucide-react'
 import { toast } from 'sonner'
 import type { DeliveryOrderItem } from '@/types'
 
-const uid = () => Math.random().toString(36).slice(2, 10)
 const COIL_GRADES = [
   'CRCA IS513 D','CRCA IS513 DD','HRPO SAE1006','HRPO SAE1008',
   'GP Zero Spangle','GP Regular Spangle','HR IS2062 E250','HR IS2062 E350',
 ]
+
+const DO_PREFIX = `DO-2026-${String(Math.floor(Math.random()*900)+100)}`
 
 const inp: React.CSSProperties = {
   width:'100%', padding:'0.55rem 0.75rem', borderRadius:'0.55rem',
@@ -32,7 +33,7 @@ export const CreateDOPage = () => {
   useEffect(() => { fetchLookups() }, [])
 
   const [form, setForm] = useState({
-    do_number: `DO-2026-${String(Math.floor(Math.random()*900)+100)}`,
+    do_number: DO_PREFIX,
     supplier_id: '',
     source_service_centre_id: '',
     expected_collection_date: '',
@@ -76,19 +77,22 @@ export const CreateDOPage = () => {
     if (err) { toast.error(err); return }
     setSubmitting(true)
     try {
+      // Strip any client-side id — Supabase generates UUIDs server-side
+      const cleanItems = items.map(({ coil_grade, thickness_mm, width_mm, quantity, weight_mt }) => ({
+        coil_grade, thickness_mm, width_mm, quantity, weight_mt,
+      }))
       await createDO({
         do_number: form.do_number.trim(),
         supplier_id: form.supplier_id,
         source_service_centre_id: form.source_service_centre_id,
         expected_collection_date: form.expected_collection_date,
-        status: 'draft',
-        items: items.map(it=>({...it,id:uid()})),
         created_by: user?.id??'',
-      } as any)
+        items: cleanItems,
+      })
       toast.success(`DO ${form.do_number} created`)
       navigate('/dos')
-    } catch(e:any) {
-      toast.error(e.message??'Failed to create DO')
+    } catch(e:unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to create DO')
     } finally { setSubmitting(false) }
   }
 
@@ -171,7 +175,7 @@ export const CreateDOPage = () => {
                     <div key={key}>
                       <label style={lbl}>{label} *</label>
                       <input style={inp} type="number" step={step} min="0"
-                        value={(it as any)[key]}
+                        value={(it as Record<string,unknown>)[key] as number}
                         onChange={e=>setItem(i,key,parseFloat(e.target.value)||0)}/>
                     </div>
                   ))}

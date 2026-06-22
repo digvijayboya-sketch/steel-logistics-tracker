@@ -57,11 +57,12 @@ export const apiGetCustomers = async () => {
   return data ?? []
 }
 
+// Fetch all non-admin field staff (agents + managers) for assignment dropdowns
 export const apiGetAgents = async () => {
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
-    .in('role', ['agent'])
+    .in('role', ['agent', 'manager'])
     .order('full_name')
   if (error) throw error
   return data ?? []
@@ -115,6 +116,7 @@ export const apiCreateDO = async (payload: {
     .single()
   if (doErr) throw doErr
 
+  // items must NOT include an id — Supabase generates UUIDs server-side
   const { error: itemErr } = await supabase
     .from('do_items')
     .insert(items.map(i => ({ ...i, do_id: doRow.id })))
@@ -136,7 +138,7 @@ export const apiGetJobs = async () => {
     .from('jobs')
     .select(`
       *,
-      do:delivery_orders(id,do_number),
+      do:delivery_orders(id,do_number,source_service_centre:service_centres(id,name,city)),
       customer:customers(id,name,city),
       assigned_agent:profiles(id,full_name,role)
     `)
