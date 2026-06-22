@@ -17,6 +17,7 @@ import { LogExpensePage } from '@/pages/LogExpensePage'
 import { DeliveriesPage } from '@/pages/DeliveriesPage'
 import { LogDeliveryPage } from '@/pages/LogDeliveryPage'
 import { ReportsPage } from '@/pages/ReportsPage'
+import { MasterDataPage } from '@/pages/MasterDataPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -41,7 +42,6 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-          {/* Default landing after login → Dashboard */}
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard"      element={<DashboardPage />} />
           <Route path="dos"            element={<DOListPage />} />
@@ -57,6 +57,7 @@ export default function App() {
           <Route path="deliveries"     element={<DeliveriesPage />} />
           <Route path="deliveries/log" element={<LogDeliveryPage />} />
           <Route path="reports"        element={<ReportsPage />} />
+          <Route path="master"         element={<MasterDataPage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

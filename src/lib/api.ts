@@ -38,7 +38,7 @@ export const apiUpdateProfile = async (userId: string, patch: { full_name?: stri
   return data
 }
 
-// ── Lookup tables ─────────────────────────────────────────────
+// ── Lookup tables (read) ──────────────────────────────────────
 export const apiGetSuppliers = async () => {
   const { data, error } = await supabase.from('suppliers').select('*').order('name')
   if (error) throw error
@@ -57,7 +57,6 @@ export const apiGetCustomers = async () => {
   return data ?? []
 }
 
-// Fetch all non-admin field staff (agents + managers) for assignment dropdowns
 export const apiGetAgents = async () => {
   const { data, error } = await supabase
     .from('profiles')
@@ -66,6 +65,83 @@ export const apiGetAgents = async () => {
     .order('full_name')
   if (error) throw error
   return data ?? []
+}
+
+// All profiles (admin use)
+export const apiGetAllProfiles = async () => {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .order('full_name')
+  if (error) throw error
+  return data ?? []
+}
+
+// ── Suppliers (CRUD) ──────────────────────────────────────────
+export const apiCreateSupplier = async (payload: { name: string; contact_person?: string; phone?: string; email?: string; gst_number?: string; address?: string }) => {
+  const { data, error } = await supabase.from('suppliers').insert(payload).select().single()
+  if (error) throw error
+  return data
+}
+
+export const apiUpdateSupplier = async (id: string, patch: Partial<{ name: string; contact_person: string; phone: string; email: string; gst_number: string; address: string }>) => {
+  const { data, error } = await supabase.from('suppliers').update(patch).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+export const apiDeleteSupplier = async (id: string) => {
+  const { error } = await supabase.from('suppliers').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ── Service Centres (CRUD) ────────────────────────────────────
+export const apiCreateServiceCentre = async (payload: { name: string; city?: string; contact_person?: string; phone?: string; address?: string }) => {
+  const { data, error } = await supabase.from('service_centres').insert(payload).select().single()
+  if (error) throw error
+  return data
+}
+
+export const apiUpdateServiceCentre = async (id: string, patch: Partial<{ name: string; city: string; contact_person: string; phone: string; address: string }>) => {
+  const { data, error } = await supabase.from('service_centres').update(patch).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+export const apiDeleteServiceCentre = async (id: string) => {
+  const { error } = await supabase.from('service_centres').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ── Customers (CRUD) ──────────────────────────────────────────
+export const apiCreateCustomer = async (payload: { name: string; city?: string; contact_person?: string; phone?: string; email?: string; gst_number?: string }) => {
+  const { data, error } = await supabase.from('customers').insert(payload).select().single()
+  if (error) throw error
+  return data
+}
+
+export const apiUpdateCustomer = async (id: string, patch: Partial<{ name: string; city: string; contact_person: string; phone: string; email: string; gst_number: string }>) => {
+  const { data, error } = await supabase.from('customers').update(patch).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+export const apiDeleteCustomer = async (id: string) => {
+  const { error } = await supabase.from('customers').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ── User / Profile management (admin) ────────────────────────
+export const apiUpdateUserRole = async (id: string, role: string) => {
+  const { data, error } = await supabase.from('profiles').update({ role }).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+export const apiUpdateUserProfile = async (id: string, patch: Partial<{ full_name: string; phone: string; is_active: boolean }>) => {
+  const { data, error } = await supabase.from('profiles').update(patch).eq('id', id).select().single()
+  if (error) throw error
+  return data
 }
 
 // ── Delivery Orders ───────────────────────────────────────────
@@ -116,7 +192,6 @@ export const apiCreateDO = async (payload: {
     .single()
   if (doErr) throw doErr
 
-  // items must NOT include an id — Supabase generates UUIDs server-side
   const { error: itemErr } = await supabase
     .from('do_items')
     .insert(items.map(i => ({ ...i, do_id: doRow.id })))
@@ -213,7 +288,6 @@ export const apiAddQueueUpdate = async (payload: {
 }) => {
   const { data, error } = await supabase.from('queue_updates').insert(payload).select().single()
   if (error) throw error
-  // Also bump job status to at_service_centre
   await supabase.from('jobs').update({ status: 'at_service_centre' }).eq('id', payload.job_id)
   return data
 }
@@ -294,7 +368,6 @@ export const apiAddDelivery = async (payload: {
 }) => {
   const { data, error } = await supabase.from('deliveries').insert(payload).select().single()
   if (error) throw error
-  // Bump job status to delivered
   await supabase.from('jobs').update({ status: 'delivered' }).eq('id', payload.job_id)
   return data
 }
@@ -318,6 +391,5 @@ const apiWriteAudit = async (entry: {
   entity: string; entity_id: string; field: string
   old_value?: string; new_value?: string; changed_by: string
 }) => {
-  // Fire-and-forget; don't let audit failure block the main action
   await supabase.from('audit_log').insert(entry).catch(console.warn)
 }

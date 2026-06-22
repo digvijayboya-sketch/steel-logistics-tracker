@@ -1,13 +1,13 @@
+import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useRole, ROLE_META } from '@/hooks/useRole'
-import { DEMO_JOBS, DEMO_DOS, DEMO_EXPENSES, DEMO_DELIVERIES } from '@/lib/demoData'
+import { useDataStore } from '@/store/dataStore'
 import { formatDate } from '@/lib/utils'
 import { JOB_STATUS_LABELS } from '@/types'
 import type { JobStatus } from '@/types'
 import {
   Briefcase, FileText, Receipt, Truck,
-  AlertTriangle, Clock, TrendingUp, CheckCircle2,
-  ChevronRight, Activity,
+  AlertTriangle, TrendingUp, ChevronRight, Activity, Loader2,
 } from 'lucide-react'
 
 const JS_COLORS: Record<JobStatus, string> = {
@@ -23,50 +23,50 @@ const PageShell = ({ children }: { children: React.ReactNode }) => (
 )
 
 export const DashboardPage = () => {
-  const { user, isAgent, isAdmin, canManage } = useRole()
+  const { user, isAgent, isAdmin } = useRole()
   const navigate = useNavigate()
   const roleMeta = ROLE_META[user?.role ?? 'agent']
+  const { dos, jobs, expenses, deliveries, loading, fetchDOs, fetchJobs, fetchExpenses, fetchDeliveries } = useDataStore()
 
-  // --- Data slices ---
-  const myJobs      = isAgent ? DEMO_JOBS.filter(j => j.assigned_agent_id === user?.id) : DEMO_JOBS
-  const activeJobs  = myJobs.filter(j => !['delivered','cancelled'].includes(j.status))
-  const activeDOs   = DEMO_DOS.filter(d => d.status === 'active')
-  const pendingExp  = DEMO_EXPENSES.filter(e => e.status === 'pending')
-  const deviations  = DEMO_DELIVERIES.filter(d => d.destination_changed && !d.authorised_by_office)
+  useEffect(() => {
+    fetchDOs()
+    fetchJobs()
+    fetchExpenses()
+    fetchDeliveries()
+  }, [])
 
-  const recentJobs  = myJobs.slice(0, 5)
+  const isLoading = loading['dos'] || loading['jobs']
 
-  // --- KPI cards ---
+  const myJobs     = isAgent ? jobs.filter(j => j.assigned_agent_id === user?.id) : jobs
+  const activeJobs = myJobs.filter(j => !['delivered','cancelled'].includes(j.status))
+  const activeDOs  = dos.filter(d => d.status === 'active')
+  const pendingExp = expenses.filter(e => e.status === 'pending')
+  const deviations = deliveries.filter(d => d.destination_changed && !d.authorised_by_office)
+
+  const recentJobs = myJobs.slice(0, 5)
+
   const kpis = isAgent
     ? [
-        { label: 'My Active Jobs',  value: activeJobs.length,  icon: Briefcase,  color: '#60a5fa', route: '/jobs',       caption: 'In progress' },
-        { label: 'Pending Expenses',value: pendingExp.filter(e => { const j = DEMO_JOBS.find(x => x.id === e.job_id); return j?.assigned_agent_id === user?.id }).length,
+        { label: 'My Active Jobs',   value: activeJobs.length,  icon: Briefcase, color: '#60a5fa', route: '/jobs',       caption: 'In progress' },
+        { label: 'Pending Expenses', value: pendingExp.filter(e => { const j = jobs.find(x => x.id === e.job_id); return j?.assigned_agent_id === user?.id }).length,
           icon: Receipt, color: '#fbbf24', route: '/expenses', caption: 'Awaiting approval' },
-        { label: 'Deliveries',      value: DEMO_DELIVERIES.filter(d => { const j = DEMO_JOBS.find(x => x.id === d.job_id); return j?.assigned_agent_id === user?.id }).length,
+        { label: 'Deliveries',       value: deliveries.filter(d => { const j = jobs.find(x => x.id === d.job_id); return j?.assigned_agent_id === user?.id }).length,
           icon: Truck, color: '#34d399', route: '/deliveries', caption: 'Total records' },
       ]
     : [
-        { label: 'Active Jobs',       value: activeJobs.length,   icon: Briefcase,    color: '#60a5fa', route: '/jobs',       caption: 'Across all agents'     },
-        { label: 'Active DOs',        value: activeDOs.length,    icon: FileText,     color: '#a78bfa', route: '/dos',        caption: 'In circulation'        },
-        { label: 'Pending Expenses',  value: pendingExp.length,   icon: Receipt,      color: '#fbbf24', route: '/expenses',   caption: 'Awaiting approval'     },
-        { label: 'Route Deviations',  value: deviations.length,   icon: AlertTriangle,color: '#fb923c', route: '/deliveries', caption: 'Unauthorised reroutes' },
+        { label: 'Active Jobs',      value: activeJobs.length,  icon: Briefcase,    color: '#60a5fa', route: '/jobs',       caption: 'Across all agents'     },
+        { label: 'Active DOs',       value: activeDOs.length,   icon: FileText,     color: '#a78bfa', route: '/dos',        caption: 'In circulation'        },
+        { label: 'Pending Expenses', value: pendingExp.length,  icon: Receipt,      color: '#fbbf24', route: '/expenses',   caption: 'Awaiting approval'     },
+        { label: 'Route Deviations', value: deviations.length,  icon: AlertTriangle,color: '#fb923c', route: '/deliveries', caption: 'Unauthorised reroutes' },
       ]
 
   return (
     <PageShell>
       {/* Welcome banner */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        gap: '1rem', marginBottom: '1.75rem', flexWrap: 'wrap',
-      }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', marginBottom: '1.75rem', flexWrap: 'wrap' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem' }}>
-            <span style={{
-              fontSize: '0.68rem', fontWeight: 700, padding: '0.22rem 0.65rem',
-              borderRadius: 999, background: roleMeta.bg,
-              color: roleMeta.color, border: `1px solid ${roleMeta.accent}44`,
-              textTransform: 'uppercase', letterSpacing: '0.07em',
-            }}>
+            <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.22rem 0.65rem', borderRadius: 999, background: roleMeta.bg, color: roleMeta.color, border: `1px solid ${roleMeta.accent}44`, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
               {roleMeta.label}
             </span>
           </div>
@@ -80,16 +80,9 @@ export const DashboardPage = () => {
               : `Operations overview · ${formatDate(new Date().toISOString())}`}
           </p>
         </div>
-        {/* Quick action */}
         {isAgent && (
           <button onClick={() => navigate('/jobs')}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '0.4rem',
-              padding: '0.55rem 1.1rem', borderRadius: '0.6rem', border: 'none',
-              background: 'linear-gradient(135deg,#2dd4bf,#0d9488)',
-              color: '#07211e', fontWeight: 700, fontSize: '0.84rem',
-              cursor: 'pointer', boxShadow: '0 4px 14px rgba(45,212,191,0.28)',
-            }}>
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1.1rem', borderRadius: '0.6rem', border: 'none', background: 'linear-gradient(135deg,#2dd4bf,#0d9488)', color: '#07211e', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer', boxShadow: '0 4px 14px rgba(45,212,191,0.28)' }}>
             <Activity size={14} /> My Jobs
           </button>
         )}
@@ -107,20 +100,20 @@ export const DashboardPage = () => {
         )}
       </div>
 
+      {/* Loading shimmer */}
+      {isLoading && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--tx3)', fontSize: '0.82rem', marginBottom: '1rem' }}>
+          <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> Loading live data…
+        </div>
+      )}
+
       {/* KPI cards */}
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${kpis.length}, 1fr)`, gap: '0.85rem', marginBottom: '1.75rem' }}>
         {kpis.map(k => {
           const Icon = k.icon
           return (
             <button key={k.label} onClick={() => navigate(k.route)}
-              style={{
-                textAlign: 'left', background: 'var(--card-bg)',
-                border: `1px solid var(--card-border)`,
-                borderTop: `3px solid ${k.color}`,
-                borderRadius: '0.85rem', padding: '1rem 1.1rem',
-                cursor: 'pointer', transition: 'all 0.15s ease',
-                boxShadow: 'var(--sh-card)',
-              }}
+              style={{ textAlign: 'left', background: 'var(--card-bg)', border: `1px solid var(--card-border)`, borderTop: `3px solid ${k.color}`, borderRadius: '0.85rem', padding: '1rem 1.1rem', cursor: 'pointer', transition: 'all 0.15s ease', boxShadow: 'var(--sh-card)' }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--sh-lg)' }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--sh-card)' }}
             >
@@ -138,7 +131,7 @@ export const DashboardPage = () => {
         })}
       </div>
 
-      {/* Alerts for non-agents */}
+      {/* Route deviation alert */}
       {!isAgent && deviations.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.7rem 1rem', borderRadius: '0.7rem', marginBottom: '1.25rem', background: 'rgba(251,146,60,0.12)', border: '1px solid rgba(251,146,60,0.28)' }}>
           <AlertTriangle size={15} style={{ color: '#fb923c', flexShrink: 0 }} />
@@ -153,15 +146,15 @@ export const DashboardPage = () => {
       {/* Recent jobs */}
       <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', overflow: 'hidden', boxShadow: 'var(--sh-card)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.9rem 1.25rem', borderBottom: '1px solid var(--gb)' }}>
-          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--tx1)' }}>
-            {isAgent ? 'Your Recent Jobs' : 'Recent Jobs'}
-          </div>
+          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--tx1)' }}>{isAgent ? 'Your Recent Jobs' : 'Recent Jobs'}</div>
           <Link to="/jobs" style={{ fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}>
             View all <ChevronRight size={13} />
           </Link>
         </div>
         {recentJobs.length === 0 ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--tx3)', fontSize: '0.84rem' }}>No jobs yet</div>
+          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--tx3)', fontSize: '0.84rem' }}>
+            {isLoading ? 'Loading…' : 'No jobs yet'}
+          </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="st-table">

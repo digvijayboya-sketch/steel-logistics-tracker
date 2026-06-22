@@ -1,16 +1,18 @@
 /**
  * dataStore.ts – Zustand store that talks to Supabase via api.ts.
- * The store is the single source of truth for UI state; Supabase is the
- * source of truth for persistence. On each fetch the store is refreshed.
  */
 import { create } from 'zustand'
 import {
-  apiGetSuppliers, apiGetServiceCentres, apiGetCustomers, apiGetAgents,
+  apiGetSuppliers, apiGetServiceCentres, apiGetCustomers, apiGetAgents, apiGetAllProfiles,
   apiGetDOs, apiGetDO, apiCreateDO, apiUpdateDOStatus,
   apiGetJobs, apiGetJob, apiCreateJob, apiUpdateJobStatus,
   apiGetQueueUpdates, apiAddQueueUpdate, apiUpdateQueueEntry,
   apiGetExpenses, apiAddExpense, apiReviewExpense,
   apiGetDeliveries, apiAddDelivery,
+  apiCreateSupplier, apiUpdateSupplier, apiDeleteSupplier,
+  apiCreateServiceCentre, apiUpdateServiceCentre, apiDeleteServiceCentre,
+  apiCreateCustomer, apiUpdateCustomer, apiDeleteCustomer,
+  apiUpdateUserRole, apiUpdateUserProfile,
 } from '@/lib/api'
 import type {
   DeliveryOrder, Job, Expense, QueueUpdate, Delivery,
@@ -20,25 +22,27 @@ import type {
 interface LoadingState { [key: string]: boolean }
 
 interface DataState {
-  // ── Master data ────────────────────────────────────────────
+  // ── Master data ───────────────────────────────────────────────
   suppliers:      Supplier[]
   serviceCentres: ServiceCentre[]
   customers:      Customer[]
-  profiles:       Profile[]     // agents list
+  profiles:       Profile[]   // agents/managers (for dropdowns)
+  allProfiles:    Profile[]   // all users (for admin user management)
 
-  // ── Transactional data ─────────────────────────────────────
+  // ── Transactional data ────────────────────────────────────────
   dos:          DeliveryOrder[]
   jobs:         Job[]
   expenses:     Expense[]
   queueUpdates: QueueUpdate[]
   deliveries:   Delivery[]
 
-  // ── Loading / error flags ──────────────────────────────────
+  // ── Loading / error ───────────────────────────────────────────
   loading: LoadingState
   error:   string | null
 
-  // ── Fetch actions ──────────────────────────────────────────
+  // ── Fetch actions ─────────────────────────────────────────────
   fetchLookups:      () => Promise<void>
+  fetchAllProfiles:  () => Promise<void>
   fetchDOs:          () => Promise<void>
   fetchDO:           (id: string) => Promise<void>
   fetchJobs:         () => Promise<void>
@@ -47,7 +51,7 @@ interface DataState {
   fetchExpenses:     () => Promise<void>
   fetchDeliveries:   () => Promise<void>
 
-  // ── Mutation actions ───────────────────────────────────────
+  // ── Transactional mutations ───────────────────────────────────
   createDO:         (payload: Parameters<typeof apiCreateDO>[0])         => Promise<string>
   updateDOStatus:   (id: string, status: DOStatus,   userId: string)     => Promise<void>
   createJob:        (payload: Parameters<typeof apiCreateJob>[0])        => Promise<string>
@@ -57,6 +61,19 @@ interface DataState {
   addExpense:       (payload: Parameters<typeof apiAddExpense>[0])       => Promise<void>
   reviewExpense:    (id: string, status: ExpenseStatus, notes: string, userId: string) => Promise<void>
   addDelivery:      (payload: Parameters<typeof apiAddDelivery>[0])      => Promise<void>
+
+  // ── Master data mutations (admin) ────────────────────────────
+  createSupplier:      (p: Parameters<typeof apiCreateSupplier>[0])      => Promise<void>
+  updateSupplier:      (id: string, p: Parameters<typeof apiUpdateSupplier>[1]) => Promise<void>
+  deleteSupplier:      (id: string)                                       => Promise<void>
+  createServiceCentre: (p: Parameters<typeof apiCreateServiceCentre>[0]) => Promise<void>
+  updateServiceCentre: (id: string, p: Parameters<typeof apiUpdateServiceCentre>[1]) => Promise<void>
+  deleteServiceCentre: (id: string)                                       => Promise<void>
+  createCustomer:      (p: Parameters<typeof apiCreateCustomer>[0])      => Promise<void>
+  updateCustomer:      (id: string, p: Parameters<typeof apiUpdateCustomer>[1]) => Promise<void>
+  deleteCustomer:      (id: string)                                       => Promise<void>
+  updateUserRole:      (id: string, role: string)                         => Promise<void>
+  updateUserProfile:   (id: string, patch: Parameters<typeof apiUpdateUserProfile>[1]) => Promise<void>
 }
 
 const setLoading = (key: string, val: boolean) =>
@@ -67,6 +84,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   serviceCentres: [],
   customers:      [],
   profiles:       [],
+  allProfiles:    [],
   dos:            [],
   jobs:           [],
   expenses:       [],
@@ -75,7 +93,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   loading:        {},
   error:          null,
 
-  // ── Fetch lookups ──────────────────────────────────────────
+  // ── Lookups ───────────────────────────────────────────────────
   fetchLookups: async () => {
     set(setLoading('lookups', true))
     try {
@@ -90,7 +108,17 @@ export const useDataStore = create<DataState>((set, get) => ({
     }
   },
 
-  // ── Fetch DOs ─────────────────────────────────────────────
+  fetchAllProfiles: async () => {
+    set(setLoading('allProfiles', true))
+    try {
+      const allProfiles = await apiGetAllProfiles() as unknown as Profile[]
+      set({ allProfiles })
+    } catch (e: unknown) {
+      set({ error: e instanceof Error ? e.message : 'Failed' })
+    } finally { set(setLoading('allProfiles', false)) }
+  },
+
+  // ── DOs ───────────────────────────────────────────────────────
   fetchDOs: async () => {
     set(setLoading('dos', true))
     try {
@@ -110,12 +138,10 @@ export const useDataStore = create<DataState>((set, get) => ({
       set(s => ({ dos: s.dos.some(d => d.id === id) ? s.dos.map(d => d.id === id ? do_ : d) : [...s.dos, do_] }))
     } catch (e: unknown) {
       set({ error: e instanceof Error ? e.message : 'Failed to load DO' })
-    } finally {
-      set(setLoading(`do_${id}`, false))
-    }
+    } finally { set(setLoading(`do_${id}`, false)) }
   },
 
-  // ── Fetch Jobs ─────────────────────────────────────────────
+  // ── Jobs ──────────────────────────────────────────────────────
   fetchJobs: async () => {
     set(setLoading('jobs', true))
     try {
@@ -123,9 +149,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       set({ jobs })
     } catch (e: unknown) {
       set({ error: e instanceof Error ? e.message : 'Failed to load jobs' })
-    } finally {
-      set(setLoading('jobs', false))
-    }
+    } finally { set(setLoading('jobs', false)) }
   },
 
   fetchJob: async (id) => {
@@ -135,12 +159,10 @@ export const useDataStore = create<DataState>((set, get) => ({
       set(s => ({ jobs: s.jobs.some(j => j.id === id) ? s.jobs.map(j => j.id === id ? job : j) : [...s.jobs, job] }))
     } catch (e: unknown) {
       set({ error: e instanceof Error ? e.message : 'Failed to load job' })
-    } finally {
-      set(setLoading(`job_${id}`, false))
-    }
+    } finally { set(setLoading(`job_${id}`, false)) }
   },
 
-  // ── Fetch Queue, Expenses, Deliveries ─────────────────────
+  // ── Queue / Expenses / Deliveries ─────────────────────────────
   fetchQueueUpdates: async () => {
     set(setLoading('queue', true))
     try { set({ queueUpdates: await apiGetQueueUpdates() as unknown as QueueUpdate[] }) }
@@ -162,7 +184,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     finally { set(setLoading('deliveries', false)) }
   },
 
-  // ── Mutation: DOs ──────────────────────────────────────────
+  // ── Transactional mutations ───────────────────────────────────
   createDO: async (payload) => {
     const row = await apiCreateDO(payload)
     await get().fetchDOs()
@@ -174,7 +196,6 @@ export const useDataStore = create<DataState>((set, get) => ({
     set(s => ({ dos: s.dos.map(d => d.id === id ? { ...d, status } : d) }))
   },
 
-  // ── Mutation: Jobs ─────────────────────────────────────────
   createJob: async (payload) => {
     const row = await apiCreateJob(payload)
     await get().fetchJobs()
@@ -186,7 +207,6 @@ export const useDataStore = create<DataState>((set, get) => ({
     set(s => ({ jobs: s.jobs.map(j => j.id === id ? { ...j, status } : j) }))
   },
 
-  // ── Mutation: Queue ────────────────────────────────────────
   addQueueUpdate: async (payload) => {
     await apiAddQueueUpdate(payload)
     await get().fetchQueueUpdates()
@@ -197,7 +217,6 @@ export const useDataStore = create<DataState>((set, get) => ({
     set(s => ({ queueUpdates: s.queueUpdates.map(q => q.id === id ? { ...q, ...patch } : q) }))
   },
 
-  // ── Mutation: Expenses ─────────────────────────────────────
   addExpense: async (payload) => {
     await apiAddExpense(payload)
     await get().fetchExpenses()
@@ -213,9 +232,63 @@ export const useDataStore = create<DataState>((set, get) => ({
     }))
   },
 
-  // ── Mutation: Deliveries ───────────────────────────────────
   addDelivery: async (payload) => {
     await apiAddDelivery(payload)
     await get().fetchDeliveries()
+  },
+
+  // ── Master data mutations ─────────────────────────────────────
+  createSupplier: async (p) => {
+    await apiCreateSupplier(p)
+    const suppliers = await apiGetSuppliers() as unknown as Supplier[]
+    set({ suppliers })
+  },
+  updateSupplier: async (id, p) => {
+    await apiUpdateSupplier(id, p)
+    const suppliers = await apiGetSuppliers() as unknown as Supplier[]
+    set({ suppliers })
+  },
+  deleteSupplier: async (id) => {
+    await apiDeleteSupplier(id)
+    set(s => ({ suppliers: s.suppliers.filter(x => x.id !== id) }))
+  },
+
+  createServiceCentre: async (p) => {
+    await apiCreateServiceCentre(p)
+    const serviceCentres = await apiGetServiceCentres() as unknown as ServiceCentre[]
+    set({ serviceCentres })
+  },
+  updateServiceCentre: async (id, p) => {
+    await apiUpdateServiceCentre(id, p)
+    const serviceCentres = await apiGetServiceCentres() as unknown as ServiceCentre[]
+    set({ serviceCentres })
+  },
+  deleteServiceCentre: async (id) => {
+    await apiDeleteServiceCentre(id)
+    set(s => ({ serviceCentres: s.serviceCentres.filter(x => x.id !== id) }))
+  },
+
+  createCustomer: async (p) => {
+    await apiCreateCustomer(p)
+    const customers = await apiGetCustomers() as unknown as Customer[]
+    set({ customers })
+  },
+  updateCustomer: async (id, p) => {
+    await apiUpdateCustomer(id, p)
+    const customers = await apiGetCustomers() as unknown as Customer[]
+    set({ customers })
+  },
+  deleteCustomer: async (id) => {
+    await apiDeleteCustomer(id)
+    set(s => ({ customers: s.customers.filter(x => x.id !== id) }))
+  },
+
+  updateUserRole: async (id, role) => {
+    await apiUpdateUserRole(id, role)
+    set(s => ({ allProfiles: s.allProfiles.map(p => p.id === id ? { ...p, role: role as any } : p) }))
+  },
+  updateUserProfile: async (id, patch) => {
+    await apiUpdateUserProfile(id, patch)
+    set(s => ({ allProfiles: s.allProfiles.map(p => p.id === id ? { ...p, ...patch } : p) }))
   },
 }))

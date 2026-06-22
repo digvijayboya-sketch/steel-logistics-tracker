@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
 import {
   FileText, Briefcase, Factory,
-  Receipt, Truck, BarChart3, LogOut, X, Sun, Moon, LayoutDashboard, Menu
+  Receipt, Truck, BarChart3, LogOut, X, Sun, Moon, LayoutDashboard, Menu, Database,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
@@ -14,15 +14,8 @@ const NAV_ITEMS = [
   { to: '/expenses',   label: 'Expenses',   icon: Receipt,          roles: ['admin','planner','agent','manager'] },
   { to: '/deliveries', label: 'Deliveries', icon: Truck,            roles: ['admin','planner','agent','manager'] },
   { to: '/reports',    label: 'Reports',    icon: BarChart3,        roles: ['admin','planner','purchase','manager'] },
+  { to: '/master',     label: 'Master Data',icon: Database,         roles: ['admin'] },
 ]
-
-const NAV_COUNTS: Record<string, number> = {
-  '/dos':        2,
-  '/jobs':       3,
-  '/queue':      3,
-  '/expenses':   4,
-  '/deliveries': 9,
-}
 
 const ROLE_PILL: Record<string, { bg: string; color: string; label: string }> = {
   admin:    { bg: 'rgba(167,139,250,0.18)', color: '#c4b5fd', label: 'Admin' },
@@ -32,7 +25,6 @@ const ROLE_PILL: Record<string, { bg: string; color: string; label: string }> = 
   manager:  { bg: 'rgba(52,211,153,0.18)',  color: '#6ee7b7', label: 'Manager' },
 }
 
-/* ── Logo SVG ───────────────────────────────────────────────────── */
 const LogoIcon = ({ size = 34 }: { size?: number }) => (
   <div style={{
     width: size, height: size, borderRadius: Math.round(size * 0.28),
@@ -50,7 +42,6 @@ const LogoIcon = ({ size = 34 }: { size?: number }) => (
   </div>
 )
 
-/* ── Theme hook ─────────────────────────────────────────────────── */
 const useTheme = () => {
   const [theme, setTheme] = useState<'dark'|'light'>(() => {
     try { return (localStorage.getItem('st-theme') as 'dark'|'light') || 'dark' } catch { return 'dark' }
@@ -62,9 +53,8 @@ const useTheme = () => {
   return { theme, toggle: () => setTheme(t => t === 'dark' ? 'light' : 'dark') }
 }
 
-/* ── Nav Item ───────────────────────────────────────────────────── */
 const SideNavItem = ({ item, onClose }: { item: typeof NAV_ITEMS[0]; onClose?: () => void }) => {
-  const count = NAV_COUNTS[item.to]
+  const isMaster = item.to === '/master'
   return (
     <NavLink
       to={item.to}
@@ -77,11 +67,13 @@ const SideNavItem = ({ item, onClose }: { item: typeof NAV_ITEMS[0]; onClose?: (
         textDecoration: 'none',
         letterSpacing: '0.005em',
         transition: 'all 0.14s ease',
-        color: isActive ? '#07211e' : 'var(--tx2)',
+        color: isActive ? '#07211e' : isMaster ? '#c4b5fd' : 'var(--tx2)',
         background: isActive
-          ? 'linear-gradient(135deg, #2dd4bf 0%, #0d9488 100%)'
-          : 'transparent',
-        boxShadow: isActive ? '0 3px 14px rgba(45,212,191,0.28)' : 'none',
+          ? (isMaster ? 'linear-gradient(135deg,#a78bfa,#7c3aed)' : 'linear-gradient(135deg,#2dd4bf,#0d9488)')
+          : (isMaster ? 'rgba(167,139,250,0.07)' : 'transparent'),
+        boxShadow: isActive ? '0 3px 14px rgba(124,58,237,0.28)' : 'none',
+        border: isMaster && !isActive ? '1px solid rgba(167,139,250,0.18)' : '1px solid transparent',
+        marginTop: isMaster ? '0.4rem' : 0,
       })}
     >
       {({ isActive }) => (
@@ -89,49 +81,25 @@ const SideNavItem = ({ item, onClose }: { item: typeof NAV_ITEMS[0]; onClose?: (
           <span style={{
             width: 28, height: 28, borderRadius: 7, flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: isActive ? 'rgba(255,255,255,0.22)' : 'var(--g2)',
+            background: isActive ? 'rgba(255,255,255,0.22)' : isMaster ? 'rgba(167,139,250,0.15)' : 'var(--g2)',
           }}>
             <item.icon size={14} />
           </span>
           <span style={{ flex: 1, lineHeight: 1 }}>{item.label}</span>
-          {count !== undefined && (
-            <span style={{
-              fontSize: '0.64rem', fontWeight: 700,
-              minWidth: 20, height: 18,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              borderRadius: '999px',
-              background: isActive ? 'rgba(255,255,255,0.25)' : 'rgba(45,212,191,0.16)',
-              color: isActive ? '#07211e' : '#2dd4bf',
-              padding: '0 5px',
-            }}>
-              {count}
-            </span>
-          )}
         </>
       )}
     </NavLink>
   )
 }
 
-/* ── Sidebar ────────────────────────────────────────────────────── */
 const Sidebar = ({ visibleNav, user, handleLogout, onClose }: {
   visibleNav: typeof NAV_ITEMS; user: any; handleLogout: () => void; onClose?: () => void
 }) => {
   const { theme, toggle } = useTheme()
   const pill = user ? ROLE_PILL[user.role] : null
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', height: '100%',
-      background: 'var(--sidebar-bg)',
-      transition: 'background 0.3s ease',
-    }}>
-      {/* Header */}
-      <div style={{
-        padding: '1rem 0.9rem',
-        borderBottom: '1px solid var(--gb)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        gap: 8,
-      }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--sidebar-bg)', transition: 'background 0.3s ease' }}>
+      <div style={{ padding: '1rem 0.9rem', borderBottom: '1px solid var(--gb)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
           <LogoIcon size={34} />
           <div style={{ minWidth: 0 }}>
@@ -139,68 +107,30 @@ const Sidebar = ({ visibleNav, user, handleLogout, onClose }: {
             <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--brand)', textTransform: 'uppercase', letterSpacing: '0.09em', whiteSpace: 'nowrap' }}>Logistics &amp; Dispatch</div>
           </div>
         </div>
-        <button
-          onClick={toggle}
-          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          style={{
-            width: 30, height: 30, borderRadius: 7, flexShrink: 0,
-            background: 'var(--g2)', border: '1px solid var(--gb)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', color: 'var(--tx2)',
-            transition: 'all 0.15s ease',
-          }}
-        >
+        <button onClick={toggle} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          style={{ width: 30, height: 30, borderRadius: 7, flexShrink: 0, background: 'var(--g2)', border: '1px solid var(--gb)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--tx2)', transition: 'all 0.15s ease' }}>
           {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
         </button>
       </div>
 
-      {/* Section label */}
-      <div style={{ padding: '0.85rem 0.9rem 0.3rem', fontSize: '0.6rem', fontWeight: 700, color: 'var(--tx4)', letterSpacing: '0.11em', textTransform: 'uppercase' }}>
-        Navigation
-      </div>
+      <div style={{ padding: '0.85rem 0.9rem 0.3rem', fontSize: '0.6rem', fontWeight: 700, color: 'var(--tx4)', letterSpacing: '0.11em', textTransform: 'uppercase' }}>Navigation</div>
 
-      {/* Nav */}
       <nav style={{ flex: 1, padding: '0.15rem 0.5rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 1 }}>
-        {visibleNav.map(item => (
-          <SideNavItem key={item.to} item={item} onClose={onClose} />
-        ))}
+        {visibleNav.map(item => <SideNavItem key={item.to} item={item} onClose={onClose} />)}
       </nav>
 
-      {/* User footer */}
       {user && pill && (
         <div style={{ padding: '0.55rem 0.5rem 0.55rem', borderTop: '1px solid var(--gb)' }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 9,
-            padding: '0.55rem 0.7rem', borderRadius: '0.6rem',
-            background: 'var(--g1)', border: '1px solid var(--gb)',
-          }}>
-            {/* Avatar */}
-            <div style={{
-              width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-              background: 'linear-gradient(140deg, #2dd4bf, #0d9488)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.68rem', fontWeight: 800, color: '#07211e',
-              boxShadow: '0 0 10px rgba(45,212,191,0.35)',
-            }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '0.55rem 0.7rem', borderRadius: '0.6rem', background: 'var(--g1)', border: '1px solid var(--gb)' }}>
+            <div style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, background: 'linear-gradient(140deg,#2dd4bf,#0d9488)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.68rem', fontWeight: 800, color: '#07211e', boxShadow: '0 0 10px rgba(45,212,191,0.35)' }}>
               {user.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '0.80rem', fontWeight: 600, color: 'var(--tx1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 }}>
-                {user.name}
-              </div>
+              <div style={{ fontSize: '0.80rem', fontWeight: 600, color: 'var(--tx1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 }}>{user.name}</div>
               <div style={{ fontSize: '0.62rem', fontWeight: 600, color: pill.color, marginTop: 2 }}>{pill.label}</div>
             </div>
-            <button
-              onClick={handleLogout}
-              title="Sign Out"
-              style={{
-                padding: '0.3rem 0.55rem', borderRadius: 6, flexShrink: 0,
-                background: 'rgba(248,113,113,0.10)', border: '1px solid rgba(248,113,113,0.22)',
-                cursor: 'pointer', color: '#f87171',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                transition: 'all 0.14s ease',
-              }}
-            >
+            <button onClick={handleLogout} title="Sign Out"
+              style={{ padding: '0.3rem 0.55rem', borderRadius: 6, flexShrink: 0, background: 'rgba(248,113,113,0.10)', border: '1px solid rgba(248,113,113,0.22)', cursor: 'pointer', color: '#f87171', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.14s ease' }}>
               <LogOut size={13} />
             </button>
           </div>
@@ -210,33 +140,15 @@ const Sidebar = ({ visibleNav, user, handleLogout, onClose }: {
   )
 }
 
-/* ── Bottom tab bar (mobile) ────────────────────────────────────── */
 const BottomTabBar = ({ visibleNav }: { visibleNav: typeof NAV_ITEMS }) => (
-  <nav style={{
-    display: 'flex', position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 30,
-    background: 'var(--tab-bar-bg)',
-    borderTop: '1px solid var(--gb)',
-    backdropFilter: 'blur(20px)',
-    paddingBottom: 'env(safe-area-inset-bottom)', minHeight: 58,
-  }} className="lg-hide">
-    {visibleNav.filter(i => i.to !== '/dashboard').slice(0, 5).map(item => (
+  <nav style={{ display: 'flex', position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 30, background: 'var(--tab-bar-bg)', borderTop: '1px solid var(--gb)', backdropFilter: 'blur(20px)', paddingBottom: 'env(safe-area-inset-bottom)', minHeight: 58 }} className="lg-hide">
+    {visibleNav.filter(i => i.to !== '/dashboard' && i.to !== '/master').slice(0, 5).map(item => (
       <NavLink key={item.to} to={item.to}
-        style={({ isActive }) => ({
-          flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          gap: 3, padding: '0.35rem 0', textDecoration: 'none',
-          color: isActive ? 'var(--brand)' : 'var(--tx3)',
-          fontSize: '0.58rem', fontWeight: 600, transition: 'color 0.14s',
-          letterSpacing: '0.02em',
-        })}
+        style={({ isActive }) => ({ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, padding: '0.35rem 0', textDecoration: 'none', color: isActive ? 'var(--brand)' : 'var(--tx3)', fontSize: '0.58rem', fontWeight: 600, transition: 'color 0.14s', letterSpacing: '0.02em' })}
       >
         {({ isActive }) => (
           <>
-            <span style={{
-              width: 38, height: 26, borderRadius: 10,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: isActive ? 'rgba(45,212,191,0.14)' : 'transparent',
-              transition: 'background 0.14s',
-            }}>
+            <span style={{ width: 38, height: 26, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isActive ? 'rgba(45,212,191,0.14)' : 'transparent', transition: 'background 0.14s' }}>
               <item.icon size={18} strokeWidth={isActive ? 2.3 : 1.7} />
             </span>
             <span style={{ textTransform: 'uppercase', fontSize: '0.55rem', letterSpacing: '0.04em' }}>{item.label}</span>
@@ -247,7 +159,6 @@ const BottomTabBar = ({ visibleNav }: { visibleNav: typeof NAV_ITEMS }) => (
   </nav>
 )
 
-/* ── AppLayout ──────────────────────────────────────────────────── */
 export const AppLayout = () => {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
@@ -258,12 +169,7 @@ export const AppLayout = () => {
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-
-      {/* ── Desktop sidebar ── */}
-      <aside
-        style={{ width: 228, flexShrink: 0, borderRight: '1px solid var(--gb)', display: 'none' }}
-        className="desktop-sidebar"
-      >
+      <aside style={{ width: 228, flexShrink: 0, borderRight: '1px solid var(--gb)', display: 'none' }} className="desktop-sidebar">
         <style>{`
           .desktop-sidebar { display:flex !important; flex-direction:column; }
           @media (max-width:1023px) {
@@ -277,28 +183,12 @@ export const AppLayout = () => {
         {user && <Sidebar visibleNav={visibleNav} user={user} handleLogout={handleLogout} />}
       </aside>
 
-      {/* ── Mobile drawer ── */}
       {drawerOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex' }}>
-          <div
-            style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.60)' }}
-            onClick={() => setDrawerOpen(false)}
-          />
-          <aside style={{
-            position: 'relative', width: 240, height: '100%',
-            borderRight: '1px solid var(--gb)',
-            boxShadow: '6px 0 48px rgba(0,0,0,0.55)',
-            zIndex: 1,
-          }}>
-            <button
-              onClick={() => setDrawerOpen(false)}
-              style={{
-                position: 'absolute', top: 13, right: 13, zIndex: 2,
-                background: 'var(--g2)', border: '1px solid var(--gb)',
-                borderRadius: 7, padding: 6, cursor: 'pointer', color: 'var(--tx2)',
-                display: 'flex', alignItems: 'center',
-              }}
-            >
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.60)' }} onClick={() => setDrawerOpen(false)} />
+          <aside style={{ position: 'relative', width: 240, height: '100%', borderRight: '1px solid var(--gb)', boxShadow: '6px 0 48px rgba(0,0,0,0.55)', zIndex: 1 }}>
+            <button onClick={() => setDrawerOpen(false)}
+              style={{ position: 'absolute', top: 13, right: 13, zIndex: 2, background: 'var(--g2)', border: '1px solid var(--gb)', borderRadius: 7, padding: 6, cursor: 'pointer', color: 'var(--tx2)', display: 'flex', alignItems: 'center' }}>
               <X size={15} />
             </button>
             {user && <Sidebar visibleNav={visibleNav} user={user} handleLogout={handleLogout} onClose={() => setDrawerOpen(false)} />}
@@ -306,30 +196,10 @@ export const AppLayout = () => {
         </div>
       )}
 
-      {/* ── Main column ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-
-        {/* Mobile topbar */}
-        <header
-          style={{
-            display: 'none', alignItems: 'center', gap: 10,
-            padding: '0.6rem 1rem',
-            borderBottom: '1px solid var(--gb)',
-            background: 'var(--topbar-bg)',
-            backdropFilter: 'blur(18px)',
-            flexShrink: 0,
-          }}
-          className="mobile-topbar"
-        >
+        <header style={{ display: 'none', alignItems: 'center', gap: 10, padding: '0.6rem 1rem', borderBottom: '1px solid var(--gb)', background: 'var(--topbar-bg)', backdropFilter: 'blur(18px)', flexShrink: 0 }} className="mobile-topbar">
           <style>{`.mobile-topbar { display:none !important; } @media (max-width:1023px) { .mobile-topbar { display:flex !important; } }`}</style>
-          <button
-            onClick={() => setDrawerOpen(true)}
-            style={{
-              background: 'var(--g2)', border: '1px solid var(--gb)',
-              borderRadius: 8, padding: '6px 7px', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', color: 'var(--tx1)',
-            }}
-          >
+          <button onClick={() => setDrawerOpen(true)} style={{ background: 'var(--g2)', border: '1px solid var(--gb)', borderRadius: 8, padding: '6px 7px', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--tx1)' }}>
             <Menu size={18} />
           </button>
           <LogoIcon size={26} />
@@ -338,20 +208,11 @@ export const AppLayout = () => {
             <div style={{ fontSize: '0.57rem', color: 'var(--brand)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Logistics</div>
           </div>
           {user && (
-            <span style={{
-              marginLeft: 'auto', flexShrink: 0,
-              fontSize: '0.60rem', fontWeight: 700,
-              padding: '0.22rem 0.55rem', borderRadius: 999,
-              background: ROLE_PILL[user.role]?.bg ?? 'var(--g2)',
-              color: ROLE_PILL[user.role]?.color ?? 'var(--tx1)',
-              border: `1px solid ${ROLE_PILL[user.role]?.color ?? 'var(--gb)'}33`,
-            }}>
+            <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: '0.60rem', fontWeight: 700, padding: '0.22rem 0.55rem', borderRadius: 999, background: ROLE_PILL[user.role]?.bg ?? 'var(--g2)', color: ROLE_PILL[user.role]?.color ?? 'var(--tx1)', border: `1px solid ${ROLE_PILL[user.role]?.color ?? 'var(--gb)'}33` }}>
               {ROLE_PILL[user.role]?.label ?? user.role}
             </span>
           )}
         </header>
-
-        {/* Page content */}
         <main style={{ flex: 1, overflowY: 'auto', paddingBottom: 64 }}>
           <Outlet />
         </main>
