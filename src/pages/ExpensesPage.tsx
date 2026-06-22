@@ -1,29 +1,33 @@
 import { useState } from 'react'
-import { useAuthStore } from '@/store/appStore'
+import { useNavigate } from 'react-router-dom'
+import { useRole } from '@/hooks/useRole'
 import { DEMO_EXPENSES, DEMO_JOBS } from '@/lib/demoData'
-import { Card } from '@/components/ui/Card'
-import { ExpenseStatusBadge } from '@/components/ui/StatusBadge'
 import { formatINR, formatDateTime } from '@/lib/utils'
-import { Receipt, Search, CheckCircle2, XCircle, Clock, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react'
+import { Receipt, Search, CheckCircle2, XCircle, Clock, ChevronDown, ChevronUp, AlertCircle, PlusCircle } from 'lucide-react'
 import type { ExpenseStatus } from '@/types'
 import { EXPENSE_CATEGORY_LABELS, SETTLEMENT_LABELS } from '@/types'
 import { toast } from 'sonner'
 
 type Filter = ExpenseStatus | 'all'
 
+const PageShell = ({ children }: { children: React.ReactNode }) => (
+  <div style={{ minHeight: '100%', padding: '1.5rem 1.75rem', maxWidth: 920, margin: '0 auto' }}>
+    {children}
+  </div>
+)
+
 export const ExpensesPage = () => {
-  const { user } = useAuthStore()
-  const isAgent = user?.role === 'agent'
-  const canApprove = user?.role === 'admin' || user?.role === 'planner'
+  const { isAgent, canApprove, user } = useRole()
+  const navigate = useNavigate()
 
-  const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<Filter>('all')
-  const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [expenseStates, setExpenseStates] = useState<Record<string, { status: ExpenseStatus; notes: string }>>({})
-  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
+  const [search,       setSearch]       = useState('')
+  const [filter,       setFilter]       = useState<Filter>('all')
+  const [expandedId,   setExpandedId]   = useState<string | null>(null)
+  const [states,       setStates]       = useState<Record<string, { status: ExpenseStatus; notes: string }>>({}
+  )
+  const [reviewNotes,  setReviewNotes]  = useState<Record<string, string>>({})
 
-  const getEffectiveStatus = (id: string, orig: ExpenseStatus): ExpenseStatus =>
-    expenseStates[id]?.status ?? orig
+  const getEff = (id: string, orig: ExpenseStatus): ExpenseStatus => states[id]?.status ?? orig
 
   const base = isAgent
     ? DEMO_EXPENSES.filter(e => {
@@ -33,202 +37,218 @@ export const ExpensesPage = () => {
     : DEMO_EXPENSES
 
   const filtered = base.filter(e => {
-    const eff = getEffectiveStatus(e.id, e.status)
-    const matchSearch = !search ||
+    const eff = getEff(e.id, e.status)
+    const ms  = !search ||
       e.payee_description.toLowerCase().includes(search.toLowerCase()) ||
       EXPENSE_CATEGORY_LABELS[e.category].toLowerCase().includes(search.toLowerCase())
-    const matchFilter = filter === 'all' || eff === filter
-    return matchSearch && matchFilter
+    return ms && (filter === 'all' || eff === filter)
   })
 
-  const pendingCount = base.filter(e => getEffectiveStatus(e.id, e.status) === 'pending').length
-  const totalAmount = base.reduce((a, e) => a + e.amount_inr, 0)
-  const approvedAmount = base
-    .filter(e => getEffectiveStatus(e.id, e.status) === 'approved')
-    .reduce((a, e) => a + e.amount_inr, 0)
-  const pendingAmount = base
-    .filter(e => getEffectiveStatus(e.id, e.status) === 'pending')
-    .reduce((a, e) => a + e.amount_inr, 0)
+  const pendingCount   = base.filter(e => getEff(e.id, e.status) === 'pending').length
+  const totalAmt       = base.reduce((a, e) => a + e.amount_inr, 0)
+  const approvedAmt    = base.filter(e => getEff(e.id, e.status) === 'approved').reduce((a, e) => a + e.amount_inr, 0)
+  const pendingAmt     = base.filter(e => getEff(e.id, e.status) === 'pending').reduce((a, e) => a + e.amount_inr, 0)
 
   const handleApprove = (id: string) => {
-    setExpenseStates(prev => ({ ...prev, [id]: { status: 'approved', notes: reviewNotes[id] ?? '' } }))
+    setStates(p => ({ ...p, [id]: { status: 'approved', notes: reviewNotes[id] ?? '' } }))
     setExpandedId(null)
     toast.success('Expense approved')
   }
-
   const handleReject = (id: string) => {
-    if (!reviewNotes[id]?.trim()) {
-      toast.error('Please add a rejection reason')
-      return
-    }
-    setExpenseStates(prev => ({ ...prev, [id]: { status: 'rejected', notes: reviewNotes[id] } }))
+    if (!reviewNotes[id]?.trim()) { toast.error('Add a rejection reason first'); return }
+    setStates(p => ({ ...p, [id]: { status: 'rejected', notes: reviewNotes[id] } }))
     setExpandedId(null)
     toast.error('Expense rejected')
   }
 
+  const FILTERS: Filter[] = ['all', 'pending', 'approved', 'rejected']
+  const FILTER_CFG: Record<Filter, { color: string; bg: string }> = {
+    all:      { color: 'var(--tx2)',  bg: 'var(--g2)'                 },
+    pending:  { color: '#fbbf24',    bg: 'rgba(251,191,36,0.14)'     },
+    approved: { color: '#34d399',    bg: 'rgba(52,211,153,0.14)'     },
+    rejected: { color: '#f87171',    bg: 'rgba(248,113,113,0.14)'    },
+  }
+
   return (
-    <div className="p-4 lg:p-8 max-w-4xl mx-auto space-y-6">
+    <PageShell>
       {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-[--color-ink]">Field Expenses</h1>
-        <p className="text-sm text-[--color-ink-muted] mt-0.5">
-          {canApprove ? 'Review and approve agent expense claims' : 'Your submitted expense claims'}
-        </p>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+        <div>
+          <div className="breadcrumb" style={{ marginBottom: '0.4rem' }}>
+            <span>SteelTrack</span><span className="sep">›</span><span className="active">Expenses</span>
+          </div>
+          <h1 style={{ color: 'var(--tx1)', fontSize: '1.375rem', fontWeight: 800, letterSpacing: '-0.02em', margin: 0 }}>Field Expenses</h1>
+          <p style={{ color: 'var(--tx3)', fontSize: '0.82rem', marginTop: '0.25rem' }}>
+            {canApprove ? 'Review and approve agent expense claims' : 'Your submitted expense claims'}
+          </p>
+        </div>
+        {/* Agent logs expenses; managers/planners review */}
+        <button onClick={() => navigate('/expenses/log')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.4rem',
+            padding: '0.5rem 1rem', borderRadius: '0.6rem', border: 'none',
+            background: isAgent ? 'linear-gradient(135deg,#2dd4bf,#0d9488)' : 'var(--g2)',
+            color: isAgent ? '#07211e' : 'var(--tx2)',
+            border: isAgent ? 'none' : '1px solid var(--gb)',
+            fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+          } as React.CSSProperties}>
+          <PlusCircle size={14} /> Log Expense
+        </button>
       </div>
 
       {/* KPI strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {[['Total Logged', formatINR(totalAmount), 'bg-gray-50 text-gray-700'],
-          ['Approved', formatINR(approvedAmount), 'bg-green-50 text-green-700'],
-          ['Pending', formatINR(pendingAmount), 'bg-amber-50 text-amber-700'],
-        ].map(([l, v, cls]) => (
-          <Card key={l} className={`!p-3 ${cls}`}>
-            <div className="text-[10px] font-medium uppercase tracking-wide opacity-70">{l}</div>
-            <div className="text-lg font-bold mt-0.5 tabular">{v}</div>
-          </Card>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '0.75rem', marginBottom: '1.25rem' }}>
+        {[
+          { label: 'Total Logged', value: formatINR(totalAmt),    color: 'var(--tx1)', accent: '#60a5fa' },
+          { label: 'Approved',     value: formatINR(approvedAmt), color: '#34d399',    accent: '#34d399' },
+          { label: 'Pending',      value: formatINR(pendingAmt),  color: '#fbbf24',    accent: '#fbbf24' },
+        ].map(k => (
+          <div key={k.label} style={{
+            padding: '0.9rem 1rem', borderRadius: '0.75rem',
+            background: 'var(--card-bg)', border: '1px solid var(--card-border)',
+            borderTop: `3px solid ${k.accent}`,
+          }}>
+            <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>{k.label}</div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: k.color, fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
+          </div>
         ))}
       </div>
 
-      {/* Pending alert */}
+      {/* Pending alert for approvers */}
       {canApprove && pendingCount > 0 && (
-        <div className="flex items-center gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
-          <AlertCircle size={16} className="text-amber-600 flex-shrink-0" />
-          <div className="text-sm text-amber-800">
-            <span className="font-semibold">{pendingCount} expense{pendingCount > 1 ? 's' : ''}</span> pending your approval
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '0.75rem',
+          padding: '0.7rem 1rem', borderRadius: '0.7rem', marginBottom: '1rem',
+          background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.28)',
+        }}>
+          <AlertCircle size={15} style={{ color: '#fbbf24', flexShrink: 0 }} />
+          <div style={{ fontSize: '0.84rem', color: 'var(--tx1)' }}>
+            <span style={{ fontWeight: 700 }}>{pendingCount} expense{pendingCount > 1 ? 's' : ''}</span>
+            <span style={{ color: 'var(--tx2)' }}> awaiting your approval</span>
           </div>
         </div>
       )}
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[--color-ink-faint]" />
-          <input
-            className="w-full pl-8 pr-3 py-2 text-sm border border-[--color-border] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[--color-primary]/30 focus:border-[--color-primary]"
-            placeholder="Search by category or payee…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
+      <div style={{ display: 'flex', gap: '0.65rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: '1 1 180px', minWidth: 160 }}>
+          <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--tx3)', pointerEvents: 'none' }} />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search category or payee…"
+            style={{ width: '100%', paddingLeft: 32, paddingRight: 12, height: 36, borderRadius: '0.55rem', border: '1px solid var(--input-border)', background: 'var(--input-bg)', color: 'var(--tx1)', fontSize: '0.84rem', outline: 'none', boxSizing: 'border-box' }}
           />
         </div>
-        <div className="flex gap-1.5">
-          {(['all','pending','approved','rejected'] as Filter[]).map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg capitalize transition-colors
-                ${filter === f
-                  ? 'bg-[--color-primary] text-white'
-                  : 'bg-[--color-surface-bg] text-[--color-ink-muted] hover:bg-[--color-surface-divider]'}`}
-            >
-              {f}
-            </button>
-          ))}
+        <div style={{ display: 'flex', gap: '0.4rem' }}>
+          {FILTERS.map(f => {
+            const cfg = FILTER_CFG[f]
+            const isActive = filter === f
+            return (
+              <button key={f} onClick={() => setFilter(f)}
+                style={{
+                  padding: '0.3rem 0.85rem', borderRadius: 999,
+                  border: isActive ? `2px solid ${cfg.color}` : '2px solid transparent',
+                  background: isActive ? cfg.bg : 'var(--g1)',
+                  color: isActive ? cfg.color : 'var(--tx3)',
+                  fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                  transition: 'all 0.14s ease', textTransform: 'capitalize',
+                }}>
+                {f}
+              </button>
+            )
+          })}
         </div>
       </div>
 
-      {/* List */}
+      {/* Expense list */}
       {filtered.length === 0 ? (
-        <Card className="text-center py-12">
-          <Receipt size={32} className="mx-auto mb-3 text-[--color-ink-faint]" />
-          <div className="text-sm font-medium text-[--color-ink-muted]">No expenses found</div>
-        </Card>
+        <div style={{ padding: '3rem', textAlign: 'center', background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem' }}>
+          <Receipt size={32} style={{ color: 'var(--tx4)', margin: '0 auto 0.75rem' }} />
+          <div style={{ color: 'var(--tx2)', fontWeight: 600 }}>No expenses found</div>
+        </div>
       ) : (
-        <div className="space-y-2">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {filtered.map(expense => {
-            const effectiveStatus = getEffectiveStatus(expense.id, expense.status)
-            const effectiveNotes = expenseStates[expense.id]?.notes ?? expense.review_notes
-            const job = DEMO_JOBS.find(j => j.id === expense.job_id)
+            const eff  = getEff(expense.id, expense.status)
+            const effN = states[expense.id]?.notes ?? expense.review_notes
+            const job  = DEMO_JOBS.find(j => j.id === expense.job_id)
             const isExpanded = expandedId === expense.id
+            const statusCfg = eff === 'approved'
+              ? { color: '#34d399', bg: 'rgba(52,211,153,0.12)', Icon: CheckCircle2 }
+              : eff === 'rejected'
+              ? { color: '#f87171', bg: 'rgba(248,113,113,0.12)', Icon: XCircle }
+              : { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)',  Icon: Clock }
 
             return (
-              <Card key={expense.id} padding={false}>
-                <button
-                  className="w-full text-left p-4 hover:bg-[--color-surface-bg] transition-colors rounded-xl"
-                  onClick={() => setExpandedId(isExpanded ? null : expense.id)}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0
-                      ${effectiveStatus === 'approved' ? 'bg-green-50'
-                        : effectiveStatus === 'rejected' ? 'bg-red-50'
-                        : 'bg-amber-50'}`}>
-                      {effectiveStatus === 'approved' ? <CheckCircle2 size={16} className="text-green-600" />
-                        : effectiveStatus === 'rejected' ? <XCircle size={16} className="text-red-500" />
-                        : <Clock size={16} className="text-amber-600" />}
+              <div key={expense.id} style={{ background: 'var(--card-bg)', border: `1px solid ${isExpanded ? statusCfg.color + '44' : 'var(--card-border)'}`, borderRadius: '0.85rem', overflow: 'hidden', transition: 'border-color 0.15s ease' }}>
+                <button onClick={() => setExpandedId(isExpanded ? null : expense.id)}
+                  style={{ width: '100%', textAlign: 'left', padding: '0.9rem 1.1rem', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 9, background: statusCfg.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <statusCfg.Icon size={16} style={{ color: statusCfg.color }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 700, fontSize: '0.84rem', color: 'var(--tx1)' }}>{EXPENSE_CATEGORY_LABELS[expense.category]}</span>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '0.16rem 0.5rem', borderRadius: 999, background: statusCfg.bg, color: statusCfg.color, border: `1px solid ${statusCfg.color}44`, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{eff}</span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-semibold text-[--color-ink]">{EXPENSE_CATEGORY_LABELS[expense.category]}</span>
-                        <ExpenseStatusBadge status={effectiveStatus} />
-                      </div>
-                      <div className="text-xs text-[--color-ink-muted] mt-0.5 truncate">{expense.payee_description}</div>
-                      <div className="text-[10px] text-[--color-ink-faint] mt-0.5">
-                        {SETTLEMENT_LABELS[expense.settlement_method]} · {job?.job_number} · {formatDateTime(expense.created_at)}
-                      </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--tx2)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{expense.payee_description}</div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--tx4)', marginTop: 2 }}>
+                      {SETTLEMENT_LABELS[expense.settlement_method]} · {job?.job_number} · {formatDateTime(expense.created_at)}
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className="text-sm font-bold text-[--color-ink] tabular">{formatINR(expense.amount_inr)}</span>
-                      {isExpanded ? <ChevronUp size={14} className="text-[--color-ink-faint]" /> : <ChevronDown size={14} className="text-[--color-ink-faint]" />}
-                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                    <span style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--tx1)', fontVariantNumeric: 'tabular-nums' }}>{formatINR(expense.amount_inr)}</span>
+                    {isExpanded ? <ChevronUp size={14} style={{ color: 'var(--tx4)' }} /> : <ChevronDown size={14} style={{ color: 'var(--tx4)' }} />}
                   </div>
                 </button>
 
-                {/* Expanded panel */}
                 {isExpanded && (
-                  <div className="px-4 pb-4 pt-0 border-t border-[--color-border] mt-0">
-                    <div className="pt-3 space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
-                        {[['Logged by', expense.logged_by_profile?.full_name ?? expense.logged_by],
-                          ['Date & time', formatDateTime(expense.created_at)],
-                          ['Job', job?.job_number ?? expense.job_id],
-                          ['Settlement', SETTLEMENT_LABELS[expense.settlement_method]],
-                        ].map(([l, v]) => (
-                          <div key={l}>
-                            <div className="text-[10px] text-[--color-ink-faint]">{l}</div>
-                            <div className="text-xs font-medium text-[--color-ink-muted]">{v}</div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {effectiveNotes && (
-                        <div className="p-2.5 rounded-lg bg-red-50 border border-red-100 text-xs text-red-700">
-                          <span className="font-semibold">Review note: </span>{effectiveNotes}
+                  <div style={{ padding: '0 1.1rem 1rem', borderTop: '1px solid var(--gb)' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: '0.65rem', marginTop: '0.75rem' }}>
+                      {[
+                        ['Logged by', expense.logged_by_profile?.full_name ?? expense.logged_by],
+                        ['Date & time', formatDateTime(expense.created_at)],
+                        ['Job', job?.job_number ?? expense.job_id],
+                        ['Settlement', SETTLEMENT_LABELS[expense.settlement_method]],
+                      ].map(([l, v]) => (
+                        <div key={l}>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--tx4)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{l}</div>
+                          <div style={{ fontSize: '0.80rem', fontWeight: 600, color: 'var(--tx2)', marginTop: 2 }}>{v}</div>
                         </div>
-                      )}
-
-                      {/* Approval actions */}
-                      {canApprove && effectiveStatus === 'pending' && (
-                        <div className="space-y-2 pt-1">
-                          <textarea
-                            className="w-full text-xs border border-[--color-border] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[--color-primary]/30 resize-none"
-                            rows={2}
-                            placeholder="Review note (required for rejection)…"
-                            value={reviewNotes[expense.id] ?? ''}
-                            onChange={e => setReviewNotes(prev => ({ ...prev, [expense.id]: e.target.value }))}
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleApprove(expense.id)}
-                              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 transition-colors"
-                            >
-                              <CheckCircle2 size={13} /> Approve
-                            </button>
-                            <button
-                              onClick={() => handleReject(expense.id)}
-                              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition-colors"
-                            >
-                              <XCircle size={13} /> Reject
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                      ))}
                     </div>
+
+                    {effN && (
+                      <div style={{ marginTop: '0.65rem', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', background: 'rgba(248,113,113,0.10)', border: '1px solid rgba(248,113,113,0.22)', fontSize: '0.78rem', color: '#fca5a5' }}>
+                        <span style={{ fontWeight: 700 }}>Review note: </span>{effN}
+                      </div>
+                    )}
+
+                    {canApprove && eff === 'pending' && (
+                      <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <textarea rows={2} placeholder="Review note (required for rejection)…"
+                          value={reviewNotes[expense.id] ?? ''}
+                          onChange={e => setReviewNotes(p => ({ ...p, [expense.id]: e.target.value }))}
+                          style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid var(--input-border)', background: 'var(--input-bg)', color: 'var(--tx1)', fontSize: '0.78rem', outline: 'none', resize: 'none', boxSizing: 'border-box' }}
+                        />
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button onClick={() => handleApprove(expense.id)}
+                            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '0.5rem', borderRadius: '0.5rem', background: 'rgba(52,211,153,0.18)', border: '1px solid rgba(52,211,153,0.35)', color: '#34d399', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+                            <CheckCircle2 size={13} /> Approve
+                          </button>
+                          <button onClick={() => handleReject(expense.id)}
+                            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '0.5rem', borderRadius: '0.5rem', background: 'rgba(248,113,113,0.18)', border: '1px solid rgba(248,113,113,0.35)', color: '#f87171', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+                            <XCircle size={13} /> Reject
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
-              </Card>
+              </div>
             )
           })}
         </div>
       )}
-    </div>
+    </PageShell>
   )
 }
