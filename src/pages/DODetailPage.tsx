@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useRole } from '@/hooks/useRole'
 import { DEMO_DOS, DEMO_JOBS, DEMO_AGENTS } from '@/lib/demoData'
-import { DO_STATUS_LABELS, JOB_STATUS_LABELS, SERVICE_TYPE_LABELS } from '@/types'
+import { DO_STATUS_LABELS, JOB_STATUS_LABELS } from '@/types'
 import type { DOStatus, JobStatus } from '@/types'
 import { formatDate } from '@/lib/utils'
-import { ClipboardList, ChevronLeft, Package, User, Calendar, ChevronRight, CheckCircle2 } from 'lucide-react'
+import { ClipboardList, ChevronLeft, Package, User, ChevronRight, CheckCircle2 } from 'lucide-react'
 
 const DO_COLORS: Record<DOStatus, string> = {
   draft: '#94a3b8', active: '#60a5fa', partially_dispatched: '#fbbf24',
@@ -33,15 +33,8 @@ export const DODetailPage = () => {
   const linkedJobs = DEMO_JOBS.filter(j => j.do_id === id)
   const hasJob = linkedJobs.length > 0
 
-  // Inline plan form state
   const [planning, setPlanning] = useState(false)
-  const [form, setForm] = useState({
-    agentId: '',
-    destination: '',
-    serviceType: 'slitting',
-    plannedDate: '',
-    instructions: '',
-  })
+  const [form, setForm] = useState({ agentId: '', destination: '', serviceType: 'slitting', plannedDate: '', instructions: '' })
   const [saved, setSaved] = useState(false)
 
   if (!doItem) return (
@@ -53,11 +46,7 @@ export const DODetailPage = () => {
   const doColor = DO_COLORS[doItem.status]
   const canPlan = (isPlanner || isAdmin) && !hasJob && doItem.status !== 'draft'
 
-  const handleSavePlan = () => {
-    // In real app: call apiCreateJob()
-    setSaved(true)
-    setPlanning(false)
-  }
+  const handleSavePlan = () => { setSaved(true); setPlanning(false) }
 
   const inp = (extra?: React.CSSProperties): React.CSSProperties => ({
     width: '100%', padding: '0.5rem 0.75rem', borderRadius: '0.5rem',
@@ -67,7 +56,6 @@ export const DODetailPage = () => {
 
   return (
     <div style={{ minHeight: '100%', padding: '1.5rem 1.75rem', maxWidth: 1100, margin: '0 auto' }}>
-      {/* Breadcrumb */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
         <button onClick={() => navigate('/dos')} style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--tx3)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
           <ChevronLeft size={14} /> Orders & Jobs
@@ -76,7 +64,6 @@ export const DODetailPage = () => {
         <span style={{ fontSize: '0.82rem', color: 'var(--tx2)', fontWeight: 600 }}>{doItem.do_number}</span>
       </div>
 
-      {/* Title row */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h1 style={{ color: 'var(--tx1)', fontSize: '1.375rem', fontWeight: 800, letterSpacing: '-0.02em', margin: 0 }}>{doItem.do_number}</h1>
@@ -93,7 +80,6 @@ export const DODetailPage = () => {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', alignItems: 'start' }}>
-        {/* LEFT: DO details */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', padding: '1.25rem', boxShadow: 'var(--sh-card)' }}>
             <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--tx1)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -105,7 +91,6 @@ export const DODetailPage = () => {
             <Field label="Created" value={formatDate(doItem.created_at)} />
           </div>
 
-          {/* Coil items */}
           <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', overflow: 'hidden', boxShadow: 'var(--sh-card)' }}>
             <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--gb)', fontWeight: 700, fontSize: '0.88rem', color: 'var(--tx1)' }}>Coil Items ({doItem.items?.length ?? 0})</div>
             <table className="st-table">
@@ -125,11 +110,9 @@ export const DODetailPage = () => {
           </div>
         </div>
 
-        {/* RIGHT: Jobs + Plan form */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* Inline plan form */}
           {planning && (
-            <div style={{ background: 'var(--card-bg)', border: '2px solid rgba(167,139,250,0.4)', borderRadius: '0.85rem', padding: '1.25rem', boxShadow: '0 4px 24px rgba(124,58,237,0.15)', animation: 'slideUp 0.2s ease' }}>
+            <div style={{ background: 'var(--card-bg)', border: '2px solid rgba(167,139,250,0.4)', borderRadius: '0.85rem', padding: '1.25rem', boxShadow: '0 4px 24px rgba(124,58,237,0.15)' }}>
               <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--tx1)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <ClipboardList size={15} style={{ color: '#a78bfa' }} /> Plan & Assign Job
               </div>
@@ -179,14 +162,13 @@ export const DODetailPage = () => {
             </div>
           )}
 
-          {/* Linked Jobs */}
           <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', overflow: 'hidden', boxShadow: 'var(--sh-card)' }}>
             <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--gb)', fontWeight: 700, fontSize: '0.88rem', color: 'var(--tx1)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <User size={14} style={{ color: 'var(--accent)' }} /> Linked Jobs ({linkedJobs.length})
             </div>
             {linkedJobs.length === 0 ? (
               <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--tx4)', fontSize: '0.84rem' }}>
-                {doItem.status === 'draft' ? 'Activate DO first before planning a job.' : 'No job planned yet.'}
+                {doItem.status === 'draft' ? 'Activate DO first before planning a job.' : 'No job planned yet — click Plan Job above.'}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column' }}>

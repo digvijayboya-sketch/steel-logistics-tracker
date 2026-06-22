@@ -24,9 +24,14 @@ export const DEMO_PROFILES: Profile[] = [
   { id:'u5', full_name:'Sandeep More', role:'agent', phone:'9876500004' },
 ]
 
+// Alias used by DODetailPage plan form
+export const DEMO_AGENTS: Profile[] = DEMO_PROFILES.filter(p => p.role === 'agent')
+
 export const DEMO_DOS: DeliveryOrder[] = [
   {
-    id:'do1', do_number:'DO-2026-001', supplier_id:'s1', source_service_centre_id:'sc1', expected_collection_date:'2026-06-18', status:'partially_dispatched', document_url:'https://example.com/do1.pdf', created_at:'2026-06-17T09:00:00Z',
+    id:'do1', do_number:'DO-2026-001', supplier_id:'s1', source_service_centre_id:'sc1',
+    expected_collection_date:'2026-06-18', status:'partially_dispatched',
+    document_url:'https://example.com/do1.pdf', created_at:'2026-06-17T09:00:00Z',
     supplier:DEMO_SUPPLIERS[0], source_service_centre:DEMO_SERVICE_CENTRES[0],
     items:[
       { id:'doi1', coil_grade:'CRCA IS513 D', thickness_mm:1.2, width_mm:1250, quantity:2, weight_mt:10.5 },
@@ -34,7 +39,8 @@ export const DEMO_DOS: DeliveryOrder[] = [
     ]
   },
   {
-    id:'do2', do_number:'DO-2026-002', supplier_id:'s2', source_service_centre_id:'sc2', expected_collection_date:'2026-06-17', status:'active', created_at:'2026-06-16T11:00:00Z',
+    id:'do2', do_number:'DO-2026-002', supplier_id:'s2', source_service_centre_id:'sc2',
+    expected_collection_date:'2026-06-17', status:'active', created_at:'2026-06-16T11:00:00Z',
     supplier:DEMO_SUPPLIERS[1], source_service_centre:DEMO_SERVICE_CENTRES[1],
     items:[
       { id:'doi3', coil_grade:'GP Zero Spangle', thickness_mm:0.8, width_mm:1219, quantity:3, weight_mt:12.0 },
@@ -55,19 +61,36 @@ export const DEMO_QUEUE: QueueUpdate[] = [
   { id:'q3', job_id:'j2', service_centre_id:'sc2', service_type:'slitting', queue_number:'S-07', checkin_time:'2026-06-17T09:10:00Z', estimated_processing_minutes:180, logged_by:'u5', created_at:'2026-06-17T09:10:00Z', service_centre:DEMO_SERVICE_CENTRES[1] },
 ]
 
+// Alias used by QueuePage
+export const DEMO_QUEUE_UPDATES: QueueUpdate[] = DEMO_QUEUE
+
 export const DEMO_DELIVERIES: Delivery[] = [
   { id:'d1', job_id:'j1', customer_name:'AutoFab Components Pvt Ltd', delivery_address:'Gate 3, MIDC Chakan Phase II, Pune', vehicle_number:'MH12AB1234', delivered_at:'2026-06-18T17:45:00Z', delivery_status:'partial', destination_changed:true, old_destination:'AutoFab Components, Chakan', new_destination:'AutoFab Components – Gate 3 Receiving Bay', change_reason:'Truck height restriction at original unloading point', authorised_by_office:true, created_by:'u4', created_at:'2026-06-18T17:50:00Z', final_lat:18.7601, final_lng:73.8467 },
 ]
 
 export const DEMO_JOBS: Job[] = [
   {
-    id:'j1', job_number:'JOB-001', do_id:'do1', customer_id:'c1', delivery_destination:'AutoFab Components, Chakan', processing_instructions:'2 coils CTL into 1250 x 2500; packing on wooden pallets; edge protectors needed.', service_type:'ctl', packing_type:'Pallet + Strips', assigned_agent_id:'u4', planned_delivery_date:'2026-06-18', status:'in_transit_to_customer', created_at:'2026-06-17T12:30:00Z',
+    id:'j1', job_number:'JOB-001', do_id:'do1', customer_id:'c1',
+    delivery_destination:'AutoFab Components, Chakan',
+    processing_instructions:'2 coils CTL into 1250 x 2500; packing on wooden pallets; edge protectors needed.',
+    service_type:'ctl', packing_type:'Pallet + Strips',
+    assigned_agent_id:'u4', planned_delivery_date:'2026-06-18',
+    status:'in_transit_to_customer', created_at:'2026-06-17T12:30:00Z',
     do:DEMO_DOS[0], customer:DEMO_CUSTOMERS[0], assigned_agent:DEMO_PROFILES[3],
-    queue_updates:DEMO_QUEUE.filter(q=>q.job_id==='j1'), expenses:DEMO_EXPENSES.filter(e=>e.job_id==='j1'), deliveries:DEMO_DELIVERIES.filter(d=>d.job_id==='j1')
+    queue_updates:DEMO_QUEUE.filter(q=>q.job_id==='j1'),
+    expenses:DEMO_EXPENSES.filter(e=>e.job_id==='j1'),
+    deliveries:DEMO_DELIVERIES.filter(d=>d.job_id==='j1')
   },
   {
-    id:'j2', job_number:'JOB-002', do_id:'do2', customer_id:'c2', delivery_destination:'Precision Equipments, Pimpri', processing_instructions:'Slit 1219 coil to 4 widths of 300 mm; brown paper wrap mandatory.', service_type:'slitting', packing_type:'Paper Wrap', assigned_agent_id:'u5', planned_delivery_date:'2026-06-19', status:'at_service_centre', created_at:'2026-06-16T14:00:00Z',
+    id:'j2', job_number:'JOB-002', do_id:'do2', customer_id:'c2',
+    delivery_destination:'Precision Equipments, Pimpri',
+    processing_instructions:'Slit 1219 coil to 4 widths of 300 mm; brown paper wrap mandatory.',
+    service_type:'slitting', packing_type:'Paper Wrap',
+    assigned_agent_id:'u5', planned_delivery_date:'2026-06-19',
+    status:'at_service_centre', created_at:'2026-06-16T14:00:00Z',
     do:DEMO_DOS[1], customer:DEMO_CUSTOMERS[1], assigned_agent:DEMO_PROFILES[4],
-    queue_updates:DEMO_QUEUE.filter(q=>q.job_id==='j2'), expenses:DEMO_EXPENSES.filter(e=>e.job_id==='j2'), deliveries:[]
+    queue_updates:DEMO_QUEUE.filter(q=>q.job_id==='j2'),
+    expenses:DEMO_EXPENSES.filter(e=>e.job_id==='j2'),
+    deliveries:[]
   },
 ]
