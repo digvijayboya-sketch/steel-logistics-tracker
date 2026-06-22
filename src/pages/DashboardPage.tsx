@@ -1,224 +1,199 @@
-import { useNavigate } from 'react-router-dom'
-import { useAuthStore } from '@/store/appStore'
-import { DEMO_DOS, DEMO_JOBS, DEMO_EXPENSES, DEMO_DELIVERIES } from '@/lib/demoData'
+import { Link, useNavigate } from 'react-router-dom'
+import { useRole, ROLE_META } from '@/hooks/useRole'
+import { DEMO_JOBS, DEMO_DOS, DEMO_EXPENSES, DEMO_DELIVERIES } from '@/lib/demoData'
+import { formatDate } from '@/lib/utils'
+import { JOB_STATUS_LABELS } from '@/types'
+import type { JobStatus } from '@/types'
+import {
+  Briefcase, FileText, Receipt, Truck,
+  AlertTriangle, Clock, TrendingUp, CheckCircle2,
+  ChevronRight, Activity,
+} from 'lucide-react'
 
-const ROLE_PILL: Record<string, { bg: string; color: string; label: string }> = {
-  admin:    { bg: 'rgba(167,139,250,0.16)', color: '#c4b5fd', label: 'Admin' },
-  planner:  { bg: 'rgba(96,165,250,0.16)',  color: '#93c5fd', label: 'Planner' },
-  purchase: { bg: 'rgba(251,191,36,0.16)',  color: '#fcd34d', label: 'Purchase' },
-  agent:    { bg: 'rgba(45,212,191,0.16)',  color: '#5eead4', label: 'Delivery Agent' },
-  manager:  { bg: 'rgba(52,211,153,0.16)',  color: '#6ee7b7', label: 'Manager' },
+const JS_COLORS: Record<JobStatus, string> = {
+  assigned:'#94a3b8', acknowledged:'#60a5fa', at_service_centre:'#a78bfa',
+  processing:'#fbbf24', processing_done:'#34d399',
+  in_transit_to_customer:'#2dd4bf', delivered:'#22c55e', cancelled:'#f87171',
 }
 
-const ACCENTS = {
-  blue:   '#60a5fa',
-  brand:  '#2dd4bf',
-  red:    '#f87171',
-  green:  '#34d399',
-  amber:  '#fbbf24',
-}
-
-const QuickAction = ({ label, to, nav }: { label: string; to: string; nav: ReturnType<typeof useNavigate> }) => (
-  <button
-    onClick={() => nav(to)}
-    style={{
-      padding: '0.48rem 0.9rem',
-      borderRadius: '0.5rem',
-      background: 'var(--g2)',
-      border: '1px solid var(--gb)',
-      color: 'var(--tx2)',
-      fontSize: '0.78rem',
-      fontWeight: 600,
-      cursor: 'pointer',
-      transition: 'all 0.14s ease',
-      whiteSpace: 'nowrap',
-    }}
-    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--g3)'; (e.currentTarget as HTMLElement).style.color = 'var(--tx1)'; }}
-    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--g2)'; (e.currentTarget as HTMLElement).style.color = 'var(--tx2)'; }}
-  >
-    {label}
-  </button>
+const PageShell = ({ children }: { children: React.ReactNode }) => (
+  <div style={{ minHeight: '100%', padding: '1.5rem 1.75rem', maxWidth: 1100, margin: '0 auto' }}>
+    {children}
+  </div>
 )
 
 export const DashboardPage = () => {
-  const { user } = useAuthStore()
+  const { user, isAgent, isAdmin, canManage } = useRole()
   const navigate = useNavigate()
+  const roleMeta = ROLE_META[user?.role ?? 'agent']
 
-  const activeDOs       = DEMO_DOS.filter(d => ['active','partially_dispatched'].includes(d.status))
-  const activeJobs      = DEMO_JOBS.filter(j => !['delivered','cancelled'].includes(j.status))
-  const pendingExpenses = DEMO_EXPENSES.filter(e => e.status === 'pending')
-  const deliveriesToday = DEMO_DELIVERIES.length
+  // --- Data slices ---
+  const myJobs      = isAgent ? DEMO_JOBS.filter(j => j.assigned_agent_id === user?.id) : DEMO_JOBS
+  const activeJobs  = myJobs.filter(j => !['delivered','cancelled'].includes(j.status))
+  const activeDOs   = DEMO_DOS.filter(d => d.status === 'active')
+  const pendingExp  = DEMO_EXPENSES.filter(e => e.status === 'pending')
+  const deviations  = DEMO_DELIVERIES.filter(d => d.destination_changed && !d.authorised_by_office)
 
-  const hour     = new Date().getHours()
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
-  const dateStr  = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })
-  const pill     = user ? ROLE_PILL[user.role] ?? ROLE_PILL['admin'] : null
+  const recentJobs  = myJobs.slice(0, 5)
 
-  const kpis = [
-    { val: activeDOs.length,       label: 'Active DOs',       sub: '↑ 3 since yesterday',    up: true,  path: '/dos',        accent: ACCENTS.blue,  icon: '📋', cta: 'View Orders' },
-    { val: activeJobs.length,      label: 'Jobs In Progress', sub: '↑ 1 new today',          up: true,  path: '/jobs',       accent: ACCENTS.brand, icon: '🏭', cta: 'View Jobs' },
-    { val: pendingExpenses.length, label: 'Pending Expenses', sub: '↓ 2 approved today',     up: false, path: '/expenses',   accent: ACCENTS.red,   icon: '💸', cta: 'Review' },
-    { val: deliveriesToday,        label: 'Deliveries Today', sub: '↑ 5 completed',          up: true,  path: '/deliveries', accent: ACCENTS.green, icon: '🚛', cta: 'View Deliveries' },
-    { val: 3,                      label: 'SC Queue',         sub: '● 2 awaiting check-in',  up: null,  path: '/queue',      accent: ACCENTS.amber, icon: '🏗️', cta: 'View Queue' },
-  ]
+  // --- KPI cards ---
+  const kpis = isAgent
+    ? [
+        { label: 'My Active Jobs',  value: activeJobs.length,  icon: Briefcase,  color: '#60a5fa', route: '/jobs',       caption: 'In progress' },
+        { label: 'Pending Expenses',value: pendingExp.filter(e => { const j = DEMO_JOBS.find(x => x.id === e.job_id); return j?.assigned_agent_id === user?.id }).length,
+          icon: Receipt, color: '#fbbf24', route: '/expenses', caption: 'Awaiting approval' },
+        { label: 'Deliveries',      value: DEMO_DELIVERIES.filter(d => { const j = DEMO_JOBS.find(x => x.id === d.job_id); return j?.assigned_agent_id === user?.id }).length,
+          icon: Truck, color: '#34d399', route: '/deliveries', caption: 'Total records' },
+      ]
+    : [
+        { label: 'Active Jobs',       value: activeJobs.length,   icon: Briefcase,    color: '#60a5fa', route: '/jobs',       caption: 'Across all agents'     },
+        { label: 'Active DOs',        value: activeDOs.length,    icon: FileText,     color: '#a78bfa', route: '/dos',        caption: 'In circulation'        },
+        { label: 'Pending Expenses',  value: pendingExp.length,   icon: Receipt,      color: '#fbbf24', route: '/expenses',   caption: 'Awaiting approval'     },
+        { label: 'Route Deviations',  value: deviations.length,   icon: AlertTriangle,color: '#fb923c', route: '/deliveries', caption: 'Unauthorised reroutes' },
+      ]
 
   return (
-    <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
-
-      {/* ── Breadcrumb bar ── */}
+    <PageShell>
+      {/* Welcome banner */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0.875rem 1.75rem',
-        borderBottom: '1px solid var(--gb)',
-        flexShrink: 0, flexWrap: 'wrap', gap: '0.5rem',
+        gap: '1rem', marginBottom: '1.75rem', flexWrap: 'wrap',
       }}>
-        <nav className="breadcrumb">
-          <span>SteelTrack</span>
-          <span className="sep">›</span>
-          <span className="active">Dashboard</span>
-        </nav>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', flexWrap: 'wrap' }}>
-          {pill && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem' }}>
             <span style={{
-              fontSize: '0.65rem', fontWeight: 700,
-              padding: '0.26rem 0.65rem', borderRadius: '999px',
-              background: pill.bg, color: pill.color,
-              border: `1px solid ${pill.color}44`,
-              letterSpacing: '0.05em', textTransform: 'uppercase',
-              whiteSpace: 'nowrap',
+              fontSize: '0.68rem', fontWeight: 700, padding: '0.22rem 0.65rem',
+              borderRadius: 999, background: roleMeta.bg,
+              color: roleMeta.color, border: `1px solid ${roleMeta.accent}44`,
+              textTransform: 'uppercase', letterSpacing: '0.07em',
             }}>
-              {pill.label}
+              {roleMeta.label}
             </span>
-          )}
-          <span style={{
-            fontSize: '0.72rem', color: 'var(--tx3)',
-            background: 'var(--g1)', border: '1px solid var(--gb)',
-            borderRadius: '0.45rem', padding: '0.26rem 0.65rem',
-            whiteSpace: 'nowrap',
-          }}>
-            {dateStr}
-          </span>
-        </div>
-      </div>
-
-      {/* ── Content ── */}
-      <div style={{ flex: 1, padding: '1.75rem', overflowY: 'auto' }}>
-
-        {/* Greeting */}
-        <div style={{ marginBottom: '1.75rem' }}>
-          <h1 style={{
-            fontSize: 'clamp(1.45rem, 3vw, 1.875rem)',
-            fontWeight: 800, letterSpacing: '-0.025em',
-            lineHeight: 1.2, margin: 0, color: 'var(--tx1)',
-          }}>
-            {greeting},{' '}
-            <span style={{
-              background: 'linear-gradient(135deg,#2dd4bf 0%,#6366f1 100%)',
-              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
-            }}>
-              {user?.name?.split(' ')[0]}
-            </span>
-            {' '}👋
+          </div>
+          <h1 style={{ color: 'var(--tx1)', fontSize: '1.375rem', fontWeight: 800, letterSpacing: '-0.02em', margin: 0 }}>
+            Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'},{' '}
+            {user?.full_name?.split(' ')[0] ?? 'there'} 👋
           </h1>
-          <p style={{ fontSize: '0.875rem', color: 'var(--tx3)', marginTop: '0.3rem', lineHeight: 1.55 }}>
-            Live operations overview — click any card or choose a module from the sidebar.
+          <p style={{ color: 'var(--tx3)', fontSize: '0.82rem', marginTop: '0.25rem' }}>
+            {isAgent
+              ? `Here's your field dashboard for today, ${formatDate(new Date().toISOString())}`
+              : `Operations overview · ${formatDate(new Date().toISOString())}`}
           </p>
         </div>
-
-        {/* Quick actions */}
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-          <QuickAction label="＋ New DO"       to="/dos/new"        nav={navigate} />
-          <QuickAction label="＋ New Job"      to="/jobs/new"       nav={navigate} />
-          <QuickAction label="Log Delivery"   to="/deliveries/log" nav={navigate} />
-          <QuickAction label="Log Expense"    to="/expenses/log"   nav={navigate} />
-          <QuickAction label="View Reports"   to="/reports"        nav={navigate} />
-        </div>
-
-        {/* KPI grid */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(min(200px,100%), 1fr))',
-          gap: '0.9rem',
-          maxWidth: 960,
-        }} className="stagger">
-          {kpis.map(k => (
-            <button
-              key={k.path}
-              onClick={() => navigate(k.path)}
-              className="fade-in"
-              style={{
-                textAlign: 'left',
-                padding: '1.25rem 1.35rem 1.1rem',
-                borderRadius: '0.9rem',
-                background: 'var(--card-bg)',
-                border: '1px solid var(--card-border)',
-                cursor: 'pointer',
-                transition: 'all 0.18s ease',
-                color: 'inherit',
-                fontFamily: 'inherit',
-                position: 'relative',
-                overflow: 'hidden',
-              }}
-              onMouseEnter={e => {
-                const el = e.currentTarget as HTMLElement
-                el.style.borderColor = `${k.accent}55`
-                el.style.transform = 'translateY(-3px)'
-                el.style.boxShadow = `0 10px 32px ${k.accent}1e`
-                el.style.background = 'var(--g3)'
-              }}
-              onMouseLeave={e => {
-                const el = e.currentTarget as HTMLElement
-                el.style.borderColor = 'var(--card-border)'
-                el.style.transform = 'translateY(0)'
-                el.style.boxShadow = 'none'
-                el.style.background = 'var(--card-bg)'
-              }}
-            >
-              {/* Glow orb */}
-              <div style={{
-                position: 'absolute', top: -24, right: -24,
-                width: 80, height: 80, borderRadius: '50%',
-                background: `radial-gradient(circle,${k.accent}28 0%,transparent 70%)`,
-                pointerEvents: 'none',
-              }} />
-
-              {/* Icon */}
-              <div style={{ fontSize: '1.35rem', marginBottom: '0.55rem', lineHeight: 1 }}>{k.icon}</div>
-
-              {/* Value */}
-              <div style={{
-                fontSize: 'clamp(1.8rem,4vw,2.5rem)', fontWeight: 800,
-                color: k.accent, lineHeight: 1,
-                fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.035em',
-              }}>
-                {k.val}
-              </div>
-
-              {/* Label */}
-              <div style={{ fontSize: '0.78rem', color: 'var(--tx2)', marginTop: '0.4rem', fontWeight: 500 }}>
-                {k.label}
-              </div>
-
-              {/* Change */}
-              <div style={{
-                fontSize: '0.70rem', marginTop: '0.4rem', fontWeight: 600,
-                color: k.up === true ? '#34d399' : k.up === false ? '#f87171' : '#fbbf24',
-              }}>
-                {k.sub}
-              </div>
-
-              {/* CTA */}
-              <div style={{ fontSize: '0.68rem', color: k.accent, marginTop: '0.75rem', fontWeight: 700, letterSpacing: '0.01em' }}>
-                {k.cta} →
-              </div>
+        {/* Quick action */}
+        {isAgent && (
+          <button onClick={() => navigate('/jobs')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.4rem',
+              padding: '0.55rem 1.1rem', borderRadius: '0.6rem', border: 'none',
+              background: 'linear-gradient(135deg,#2dd4bf,#0d9488)',
+              color: '#07211e', fontWeight: 700, fontSize: '0.84rem',
+              cursor: 'pointer', boxShadow: '0 4px 14px rgba(45,212,191,0.28)',
+            }}>
+            <Activity size={14} /> My Jobs
+          </button>
+        )}
+        {!isAgent && (
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button onClick={() => navigate('/dos')}
+              style={{ padding: '0.5rem 1rem', borderRadius: '0.6rem', border: '1px solid var(--gb)', background: 'var(--g2)', color: 'var(--tx2)', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+              Delivery Orders
             </button>
-          ))}
-        </div>
-
-        <p style={{ marginTop: '2rem', fontSize: '0.68rem', color: 'var(--tx4)', letterSpacing: '0.01em' }}>
-          Steel Logistics &amp; Dispatch Tracker v1.0 · steeltrack.in
-        </p>
+            <button onClick={() => navigate('/jobs')}
+              style={{ padding: '0.5rem 1rem', borderRadius: '0.6rem', border: 'none', background: 'linear-gradient(135deg,#2dd4bf,#0d9488)', color: '#07211e', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', boxShadow: '0 4px 14px rgba(45,212,191,0.25)' }}>
+              All Jobs
+            </button>
+          </div>
+        )}
       </div>
-    </div>
+
+      {/* KPI cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${kpis.length}, 1fr)`, gap: '0.85rem', marginBottom: '1.75rem' }}>
+        {kpis.map(k => {
+          const Icon = k.icon
+          return (
+            <button key={k.label} onClick={() => navigate(k.route)}
+              style={{
+                textAlign: 'left', background: 'var(--card-bg)',
+                border: `1px solid var(--card-border)`,
+                borderTop: `3px solid ${k.color}`,
+                borderRadius: '0.85rem', padding: '1rem 1.1rem',
+                cursor: 'pointer', transition: 'all 0.15s ease',
+                boxShadow: 'var(--sh-card)',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--sh-lg)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--sh-card)' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem' }}>
+                <div style={{ width: 34, height: 34, borderRadius: 9, background: `${k.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon size={16} style={{ color: k.color }} />
+                </div>
+                <TrendingUp size={12} style={{ color: 'var(--tx4)' }} />
+              </div>
+              <div style={{ fontSize: '2rem', fontWeight: 800, color: k.color, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{k.value}</div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--tx2)', marginTop: '0.35rem' }}>{k.label}</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--tx4)', marginTop: 2 }}>{k.caption}</div>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Alerts for non-agents */}
+      {!isAgent && deviations.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.7rem 1rem', borderRadius: '0.7rem', marginBottom: '1.25rem', background: 'rgba(251,146,60,0.12)', border: '1px solid rgba(251,146,60,0.28)' }}>
+          <AlertTriangle size={15} style={{ color: '#fb923c', flexShrink: 0 }} />
+          <div style={{ fontSize: '0.84rem', color: 'var(--tx1)' }}>
+            <span style={{ fontWeight: 700 }}>{deviations.length} delivery reroute{deviations.length > 1 ? 's' : ''}</span>
+            <span style={{ color: 'var(--tx2)' }}> require authorisation. </span>
+            <Link to="/deliveries" style={{ color: '#fb923c', fontWeight: 600, textDecoration: 'none' }}>Review →</Link>
+          </div>
+        </div>
+      )}
+
+      {/* Recent jobs */}
+      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', overflow: 'hidden', boxShadow: 'var(--sh-card)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.9rem 1.25rem', borderBottom: '1px solid var(--gb)' }}>
+          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--tx1)' }}>
+            {isAgent ? 'Your Recent Jobs' : 'Recent Jobs'}
+          </div>
+          <Link to="/jobs" style={{ fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}>
+            View all <ChevronRight size={13} />
+          </Link>
+        </div>
+        {recentJobs.length === 0 ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--tx3)', fontSize: '0.84rem' }}>No jobs yet</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="st-table">
+              <thead><tr><th>Job #</th><th>Customer</th><th>Destination</th><th>Status</th><th>Agent</th><th>Date</th><th /></tr></thead>
+              <tbody>
+                {recentJobs.map(j => {
+                  const accent = JS_COLORS[j.status]
+                  return (
+                    <tr key={j.id}>
+                      <td><span className="cell-primary">{j.job_number}</span></td>
+                      <td>{j.customer?.name}</td>
+                      <td>{j.delivery_destination}</td>
+                      <td>
+                        <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '0.18rem 0.5rem', borderRadius: 999, background: `${accent}22`, color: accent, border: `1px solid ${accent}44`, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+                          {JOB_STATUS_LABELS[j.status]}
+                        </span>
+                      </td>
+                      <td style={{ color: 'var(--tx3)' }}>{j.assigned_agent?.full_name ?? '—'}</td>
+                      <td className="cell-mono" style={{ color: 'var(--tx3)', fontSize: '0.78rem' }}>{formatDate(j.planned_delivery_date)}</td>
+                      <td>
+                        <Link to={`/jobs/${j.id}`} style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.78rem', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 2 }}>
+                          View <ChevronRight size={12} />
+                        </Link>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </PageShell>
   )
 }
