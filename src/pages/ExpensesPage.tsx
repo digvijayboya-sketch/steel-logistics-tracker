@@ -82,11 +82,10 @@ export const ExpensesPage = () => {
             {canApprove ? 'Review and approve agent expense claims' : 'Your submitted expense claims'}
           </p>
         </div>
-        {/* Agent logs expenses; managers/planners review */}
         <button onClick={() => navigate('/expenses/log')}
           style={{
             display: 'flex', alignItems: 'center', gap: '0.4rem',
-            padding: '0.5rem 1rem', borderRadius: '0.6rem', border: 'none',
+            padding: '0.5rem 1rem', borderRadius: '0.6rem',
             background: isAgent ? 'linear-gradient(135deg,#2dd4bf,#0d9488)' : 'var(--g2)',
             color: isAgent ? '#07211e' : 'var(--tx2)',
             border: isAgent ? 'none' : '1px solid var(--gb)',
