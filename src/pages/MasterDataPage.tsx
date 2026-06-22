@@ -1,3 +1,11 @@
+/**
+ * MasterDataPage.tsx
+ * Admin-only page. All columns match the EXACT database schema:
+ *   suppliers       → id, name
+ *   service_centres → id, name, city
+ *   customers       → id, name, city
+ *   profiles        → id, full_name, role (admin|planner|purchase|agent), phone
+ */
 import { useEffect, useState } from 'react'
 import { useRole } from '@/hooks/useRole'
 import { useDataStore } from '@/store/dataStore'
@@ -10,21 +18,22 @@ import { useNavigate } from 'react-router-dom'
 
 type Tab = 'suppliers' | 'service_centres' | 'customers' | 'users'
 
-const ROLES = ['admin', 'planner', 'purchase', 'manager', 'agent'] as const
-type Role = typeof ROLES[number]
+// Exact roles from DB enum: admin | planner | purchase | agent
+const DB_ROLES = ['admin', 'planner', 'purchase', 'agent'] as const
+type DBRole = typeof DB_ROLES[number]
 
-const ROLE_COLORS: Record<Role, string> = {
+const ROLE_COLORS: Record<DBRole, string> = {
   admin:    '#c4b5fd',
   planner:  '#93c5fd',
   purchase: '#fcd34d',
-  manager:  '#6ee7b7',
   agent:    '#5eead4',
 }
 
 const inp: React.CSSProperties = {
   width: '100%', padding: '0.5rem 0.7rem', borderRadius: '0.5rem',
   border: '1px solid var(--input-border)', background: 'var(--input-bg)',
-  color: 'var(--tx1)', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' as const,
+  color: 'var(--tx1)', fontSize: '0.82rem', outline: 'none',
+  boxSizing: 'border-box' as const,
 }
 
 const PageShell = ({ children }: { children: React.ReactNode }) => (
@@ -33,82 +42,84 @@ const PageShell = ({ children }: { children: React.ReactNode }) => (
   </div>
 )
 
-// ── Inline editable row ──────────────────────────────────────
-type EntityRow = { id: string; [key: string]: string | number | boolean | null | undefined }
+// ── Types ───────────────────────────────────────────────────
+type StrMap = Record<string, string>
+type ColDef = { key: string; label: string; placeholder?: string }
 
-interface EditRowState { id: string; fields: Record<string, string> }
-
-// ── Generic entity table ─────────────────────────────────────
+// ── Generic inline-edit table ─────────────────────────────────
 function EntityTable({
   data, columns, onAdd, onUpdate, onDelete, loading, addLabel, emptyMsg,
 }: {
-  data: EntityRow[]
-  columns: { key: string; label: string; placeholder?: string; width?: number }[]
-  onAdd: (fields: Record<string, string>) => Promise<void>
-  onUpdate: (id: string, fields: Record<string, string>) => Promise<void>
+  data: (StrMap & { id: string })[]
+  columns: ColDef[]
+  onAdd: (fields: StrMap) => Promise<void>
+  onUpdate: (id: string, fields: StrMap) => Promise<void>
   onDelete: (id: string) => Promise<void>
   loading: boolean
   addLabel: string
   emptyMsg: string
 }) {
-  const blank = () => Object.fromEntries(columns.map(c => [c.key, '']))
-  const [editRow, setEditRow] = useState<EditRowState | null>(null)
-  const [addRow, setAddRow]   = useState<Record<string, string> | null>(null)
-  const [busy, setBusy]       = useState<string | null>(null)
-  const [search, setSearch]   = useState('')
+  const blank = (): StrMap => Object.fromEntries(columns.map(c => [c.key, '']))
+  const [editRow, setEditRow] = useState<{ id: string; fields: StrMap } | null>(null)
+  const [addRow,  setAddRow]  = useState<StrMap | null>(null)
+  const [busy,    setBusy]    = useState<string | null>(null)
+  const [search,  setSearch]  = useState('')
 
   const filtered = data.filter(row =>
-    columns.some(c => String(row[c.key] ?? '').toLowerCase().includes(search.toLowerCase()))
+    columns.some(c => (row[c.key] ?? '').toLowerCase().includes(search.toLowerCase()))
   )
+
+  const save = async (fn: () => Promise<void>, successMsg: string) => {
+    try { await fn(); toast.success(successMsg) }
+    catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Failed') }
+  }
 
   const handleAdd = async () => {
     if (!addRow) return
     setBusy('add')
-    try { await onAdd(addRow); setAddRow(null); toast.success('Created') }
-    catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Failed') }
-    finally { setBusy(null) }
+    await save(async () => { await onAdd(addRow); setAddRow(null) }, 'Created')
+    setBusy(null)
   }
 
   const handleUpdate = async () => {
     if (!editRow) return
     setBusy(editRow.id)
-    try { await onUpdate(editRow.id, editRow.fields); setEditRow(null); toast.success('Updated') }
-    catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Failed') }
-    finally { setBusy(null) }
+    await save(async () => { await onUpdate(editRow.id, editRow.fields); setEditRow(null) }, 'Updated')
+    setBusy(null)
   }
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('Delete this record? This cannot be undone.')) return
     setBusy(id + '_del')
-    try { await onDelete(id); toast.success('Deleted') }
-    catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Failed') }
-    finally { setBusy(null) }
+    await save(() => onDelete(id), 'Deleted')
+    setBusy(null)
   }
+
+  const actionBtn = (label: React.ReactNode, onClick: () => void, color: string, disabled = false) => (
+    <button onClick={onClick} disabled={disabled}
+      style={{ padding: '0.28rem 0.55rem', borderRadius: 6, border: 'none',
+        background: `${color}22`, color, cursor: 'pointer',
+        display: 'flex', alignItems: 'center', opacity: disabled ? 0.5 : 1 }}>
+      {label}
+    </button>
+  )
 
   return (
     <div>
-      {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.85rem', flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
           <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--tx4)', pointerEvents: 'none' }} />
-          <input
-            style={{ ...inp, paddingLeft: '1.8rem' }}
-            placeholder="Search…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
+          <input style={{ ...inp, paddingLeft: '1.8rem' }} placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <button
-          onClick={() => { setAddRow(blank()); setEditRow(null) }}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.45rem 0.9rem', borderRadius: '0.5rem', border: 'none', background: 'linear-gradient(135deg,#2dd4bf,#0d9488)', color: '#07211e', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
-        >
+        <button onClick={() => { setAddRow(blank()); setEditRow(null) }}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.45rem 0.9rem', borderRadius: '0.5rem', border: 'none', background: 'linear-gradient(135deg,#2dd4bf,#0d9488)', color: '#07211e', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
           <Plus size={13} /> {addLabel}
         </button>
       </div>
 
       <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', overflow: 'hidden', boxShadow: 'var(--sh-card)' }}>
         {loading ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem', gap: '0.5rem', color: 'var(--tx3)', fontSize: '0.84rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem', gap: '0.5rem', color: 'var(--tx3)' }}>
             <Loader2 size={16} style={{ animation: 'spin 0.8s linear infinite' }} /> Loading…
           </div>
         ) : (
@@ -117,7 +128,7 @@ function EntityTable({
               <thead>
                 <tr>
                   {columns.map(c => <th key={c.key}>{c.label}</th>)}
-                  <th style={{ width: 90 }}>Actions</th>
+                  <th style={{ width: 100 }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -126,24 +137,18 @@ function EntityTable({
                   <tr style={{ background: 'rgba(45,212,191,0.06)' }}>
                     {columns.map(c => (
                       <td key={c.key}>
-                        <input
-                          style={inp}
-                          placeholder={c.placeholder ?? c.label}
+                        <input style={inp} placeholder={c.placeholder ?? c.label}
                           value={addRow[c.key] ?? ''}
-                          onChange={e => setAddRow(r => ({ ...r!, [c.key]: e.target.value }))}
-                        />
+                          onChange={e => setAddRow(r => ({ ...r!, [c.key]: e.target.value }))} />
                       </td>
                     ))}
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>
-                        <button onClick={handleAdd} disabled={busy === 'add'}
-                          style={{ padding: '0.28rem 0.55rem', borderRadius: 6, border: 'none', background: '#22c55e22', color: '#22c55e', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                          {busy === 'add' ? <Loader2 size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Check size={13} />}
-                        </button>
-                        <button onClick={() => setAddRow(null)}
-                          style={{ padding: '0.28rem 0.55rem', borderRadius: 6, border: 'none', background: '#f8717122', color: '#f87171', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                          <X size={13} />
-                        </button>
+                        {actionBtn(
+                          busy === 'add' ? <Loader2 size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Check size={13} />,
+                          handleAdd, '#22c55e', busy === 'add'
+                        )}
+                        {actionBtn(<X size={13} />, () => setAddRow(null), '#f87171')}
                       </div>
                     </td>
                   </tr>
@@ -157,45 +162,36 @@ function EntityTable({
                   const isEditing = editRow?.id === row.id
                   return (
                     <tr key={row.id}>
-                      {columns.map(c => (
+                      {columns.map((c, i) => (
                         <td key={c.key}>
-                          {isEditing ? (
-                            <input
-                              style={inp}
-                              value={editRow.fields[c.key] ?? ''}
-                              onChange={e => setEditRow(r => r ? { ...r, fields: { ...r.fields, [c.key]: e.target.value } } : r)}
-                            />
-                          ) : (
-                            <span style={c.key === columns[0].key ? { fontWeight: 600, color: 'var(--tx1)' } : { color: 'var(--tx2)', fontSize: '0.82rem' }}>
-                              {String(row[c.key] ?? '—')}
-                            </span>
-                          )}
+                          {isEditing
+                            ? <input style={inp} value={editRow.fields[c.key] ?? ''}
+                                onChange={e => setEditRow(r => r ? { ...r, fields: { ...r.fields, [c.key]: e.target.value } } : r)} />
+                            : <span style={i === 0 ? { fontWeight: 600, color: 'var(--tx1)' } : { color: 'var(--tx2)', fontSize: '0.82rem' }}>
+                                {row[c.key] || '—'}
+                              </span>
+                          }
                         </td>
                       ))}
                       <td>
                         <div style={{ display: 'flex', gap: 4 }}>
                           {isEditing ? (
                             <>
-                              <button onClick={handleUpdate} disabled={busy === row.id}
-                                style={{ padding: '0.28rem 0.55rem', borderRadius: 6, border: 'none', background: '#22c55e22', color: '#22c55e', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                                {busy === row.id ? <Loader2 size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Check size={13} />}
-                              </button>
-                              <button onClick={() => setEditRow(null)}
-                                style={{ padding: '0.28rem 0.55rem', borderRadius: 6, border: 'none', background: '#f8717122', color: '#f87171', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                                <X size={13} />
-                              </button>
+                              {actionBtn(
+                                busy === row.id ? <Loader2 size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Check size={13} />,
+                                handleUpdate, '#22c55e', busy === row.id
+                              )}
+                              {actionBtn(<X size={13} />, () => setEditRow(null), '#f87171')}
                             </>
                           ) : (
                             <>
-                              <button
-                                onClick={() => setEditRow({ id: row.id, fields: Object.fromEntries(columns.map(c => [c.key, String(row[c.key] ?? '')])) })}
-                                style={{ padding: '0.28rem 0.55rem', borderRadius: 6, border: 'none', background: 'rgba(96,165,250,0.12)', color: '#60a5fa', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                                <Pencil size={12} />
-                              </button>
-                              <button onClick={() => handleDelete(row.id)} disabled={busy === row.id + '_del'}
-                                style={{ padding: '0.28rem 0.55rem', borderRadius: 6, border: 'none', background: '#f8717122', color: '#f87171', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                                {busy === row.id + '_del' ? <Loader2 size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Trash2 size={12} />}
-                              </button>
+                              {actionBtn(<Pencil size={12} />, () =>
+                                setEditRow({ id: row.id, fields: Object.fromEntries(columns.map(c => [c.key, row[c.key] ?? ''])) }),
+                              '#60a5fa')}
+                              {actionBtn(
+                                busy === row.id + '_del' ? <Loader2 size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Trash2 size={12} />,
+                                () => handleDelete(row.id), '#f87171', busy === row.id + '_del'
+                              )}
                             </>
                           )}
                         </div>
@@ -215,33 +211,35 @@ function EntityTable({
   )
 }
 
-// ── Users panel ───────────────────────────────────────────────
+// ── Users panel ─────────────────────────────────────────────
 function UsersPanel() {
   const { allProfiles, loading, fetchAllProfiles, updateUserRole, updateUserProfile } = useDataStore()
-  const [search, setSearch] = useState('')
-  const [editId, setEditId] = useState<string | null>(null)
-  const [editRole, setEditRole] = useState<string>('')
-  const [editName, setEditName] = useState<string>('')
-  const [busy, setBusy] = useState<string | null>(null)
+  const [search,   setSearch]   = useState('')
+  const [editId,   setEditId]   = useState<string | null>(null)
+  const [editRole, setEditRole] = useState<DBRole>('agent')
+  const [editName, setEditName] = useState('')
+  const [editPhone,setEditPhone]= useState('')
+  const [busy,     setBusy]     = useState<string | null>(null)
 
   useEffect(() => { fetchAllProfiles() }, [])
 
   const filtered = allProfiles.filter(p =>
-    p.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-    p.role?.toLowerCase().includes(search.toLowerCase())
+    (p.full_name ?? '').toLowerCase().includes(search.toLowerCase()) ||
+    (p.role      ?? '').toLowerCase().includes(search.toLowerCase())
   )
 
   const startEdit = (p: typeof allProfiles[0]) => {
     setEditId(p.id)
-    setEditRole(p.role ?? '')
+    setEditRole((p.role as DBRole) ?? 'agent')
     setEditName(p.full_name ?? '')
+    setEditPhone(p.phone ?? '')
   }
 
   const handleSave = async (id: string) => {
     setBusy(id)
     try {
       await updateUserRole(id, editRole)
-      await updateUserProfile(id, { full_name: editName })
+      await updateUserProfile(id, { full_name: editName, phone: editPhone })
       setEditId(null)
       toast.success('User updated')
     } catch (e: unknown) {
@@ -257,6 +255,7 @@ function UsersPanel() {
           <input style={{ ...inp, paddingLeft: '1.8rem' }} placeholder="Search users…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
       </div>
+
       <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', overflow: 'hidden', boxShadow: 'var(--sh-card)' }}>
         {loading['allProfiles'] ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem', gap: '0.5rem', color: 'var(--tx3)' }}>
@@ -266,24 +265,26 @@ function UsersPanel() {
           <div style={{ overflowX: 'auto' }}>
             <table className="st-table">
               <thead>
-                <tr><th>Name</th><th>Role</th><th>Phone</th><th>Actions</th></tr>
+                <tr><th>Name</th><th>Role</th><th>Phone</th><th>Member Since</th><th>Actions</th></tr>
               </thead>
               <tbody>
                 {filtered.map(p => {
                   const isEditing = editId === p.id
-                  const rc = ROLE_COLORS[p.role as Role] ?? 'var(--tx3)'
+                  const rc = ROLE_COLORS[(p.role as DBRole)] ?? 'var(--tx3)'
                   return (
                     <tr key={p.id}>
+                      {/* Name */}
                       <td>
                         {isEditing
                           ? <input style={inp} value={editName} onChange={e => setEditName(e.target.value)} />
                           : <span style={{ fontWeight: 600, color: 'var(--tx1)' }}>{p.full_name ?? '—'}</span>
                         }
                       </td>
+                      {/* Role */}
                       <td>
                         {isEditing ? (
-                          <select style={inp} value={editRole} onChange={e => setEditRole(e.target.value)}>
-                            {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                          <select style={inp} value={editRole} onChange={e => setEditRole(e.target.value as DBRole)}>
+                            {DB_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                           </select>
                         ) : (
                           <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '0.18rem 0.5rem', borderRadius: 999, background: `${rc}22`, color: rc, border: `1px solid ${rc}44`, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -291,7 +292,18 @@ function UsersPanel() {
                           </span>
                         )}
                       </td>
-                      <td style={{ color: 'var(--tx3)', fontSize: '0.82rem' }}>{p.phone ?? '—'}</td>
+                      {/* Phone */}
+                      <td style={{ color: 'var(--tx3)', fontSize: '0.82rem' }}>
+                        {isEditing
+                          ? <input style={inp} placeholder="+91 XXXXX" value={editPhone} onChange={e => setEditPhone(e.target.value)} />
+                          : p.phone ?? '—'
+                        }
+                      </td>
+                      {/* Created at */}
+                      <td style={{ color: 'var(--tx4)', fontSize: '0.78rem' }}>
+                        {p.created_at ? new Date(p.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—'}
+                      </td>
+                      {/* Actions */}
                       <td>
                         <div style={{ display: 'flex', gap: 4 }}>
                           {isEditing ? (
@@ -316,6 +328,9 @@ function UsersPanel() {
                     </tr>
                   )
                 })}
+                {filtered.length === 0 && (
+                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--tx3)', fontSize: '0.84rem' }}>No users found</td></tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -332,13 +347,10 @@ function UsersPanel() {
 export const MasterDataPage = () => {
   const { isAdmin } = useRole()
   const navigate = useNavigate()
-  const [
-    tab, setTab
-  ] = useState<Tab>('suppliers')
+  const [tab, setTab] = useState<Tab>('suppliers')
 
   const {
-    suppliers, serviceCentres, customers, loading,
-    fetchLookups,
+    suppliers, serviceCentres, customers, loading, fetchLookups,
     createSupplier, updateSupplier, deleteSupplier,
     createServiceCentre, updateServiceCentre, deleteServiceCentre,
     createCustomer, updateCustomer, deleteCustomer,
@@ -347,11 +359,14 @@ export const MasterDataPage = () => {
   useEffect(() => { fetchLookups() }, [])
 
   if (!isAdmin) return (
-    <div style={{ padding: '3rem', textAlign: 'center' }}>
-      <ShieldCheck size={40} style={{ color: 'var(--tx4)', marginBottom: '0.75rem' }} />
-      <div style={{ color: 'var(--tx2)', fontWeight: 600 }}>Admin access required</div>
-      <div style={{ color: 'var(--tx4)', fontSize: '0.82rem', marginTop: '0.3rem' }}>Only admins can manage master data.</div>
-      <button onClick={() => navigate('/dashboard')} style={{ marginTop: '1rem', padding: '0.5rem 1.2rem', borderRadius: '0.5rem', border: '1px solid var(--gb)', background: 'var(--g2)', color: 'var(--tx2)', cursor: 'pointer', fontWeight: 600 }}>Back to Dashboard</button>
+    <div style={{ padding: '4rem', textAlign: 'center' }}>
+      <ShieldCheck size={44} style={{ color: 'var(--tx4)', marginBottom: '0.75rem' }} />
+      <div style={{ color: 'var(--tx2)', fontWeight: 600, fontSize: '1rem' }}>Admin access required</div>
+      <div style={{ color: 'var(--tx4)', fontSize: '0.82rem', marginTop: '0.35rem' }}>Only admins can manage master data.</div>
+      <button onClick={() => navigate('/dashboard')}
+        style={{ marginTop: '1.25rem', padding: '0.5rem 1.3rem', borderRadius: '0.5rem', border: '1px solid var(--gb)', background: 'var(--g2)', color: 'var(--tx2)', cursor: 'pointer', fontWeight: 600 }}>
+        Back to Dashboard
+      </button>
     </div>
   )
 
@@ -362,12 +377,12 @@ export const MasterDataPage = () => {
     { key: 'users',           label: 'Users & Roles',   icon: Users },
   ]
 
-  const tabStyle = (active: boolean) => ({
+  const tabStyle = (active: boolean): React.CSSProperties => ({
     display: 'flex', alignItems: 'center', gap: '0.4rem',
     padding: '0.5rem 1.1rem',
     borderRadius: '0.5rem 0.5rem 0 0',
     border: 'none',
-    borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
+    borderBottom: `2px solid ${active ? 'var(--accent)' : 'transparent'}`,
     background: 'transparent',
     color: active ? 'var(--accent)' : 'var(--tx3)',
     fontWeight: active ? 700 : 500,
@@ -378,7 +393,6 @@ export const MasterDataPage = () => {
 
   return (
     <PageShell>
-      {/* Header */}
       <div style={{ marginBottom: '1.25rem' }}>
         <div className="breadcrumb" style={{ marginBottom: '0.4rem' }}>
           <span>SteelTrack</span><span className="sep">›</span>
@@ -392,66 +406,62 @@ export const MasterDataPage = () => {
       <div style={{ display: 'flex', borderBottom: '1px solid var(--gb)', marginBottom: '1.25rem', gap: '0.1rem' }}>
         {tabs.map(t => (
           <button key={t.key} style={tabStyle(tab === t.key)} onClick={() => setTab(t.key)}>
-            <t.icon size={13} />{t.label}
+            <t.icon size={13} /> {t.label}
           </button>
         ))}
       </div>
 
-      {/* Tab panels */}
+      {/* Suppliers – only column: name */}
       {tab === 'suppliers' && (
         <EntityTable
-          data={suppliers as unknown as EntityRow[]}
+          data={suppliers.map(s => ({ id: s.id, name: s.name }))}
           loading={!!loading['lookups']}
           addLabel="Add Supplier"
-          emptyMsg="No suppliers yet"
+          emptyMsg="No suppliers yet. Add one above."
           columns={[
-            { key: 'name',           label: 'Name',           placeholder: 'Supplier name' },
-            { key: 'contact_person', label: 'Contact Person', placeholder: 'Full name' },
-            { key: 'phone',          label: 'Phone',          placeholder: '+91 XXXXX XXXXX' },
-            { key: 'gst_number',     label: 'GST Number',     placeholder: '27AABCU9603R1ZX' },
+            { key: 'name', label: 'Supplier Name', placeholder: 'e.g. Tata Steel Ltd.' },
           ]}
-          onAdd={createSupplier}
-          onUpdate={(id, f) => updateSupplier(id, f)}
+          onAdd={fields => createSupplier({ name: fields.name })}
+          onUpdate={(id, fields) => updateSupplier(id, { name: fields.name })}
           onDelete={deleteSupplier}
         />
       )}
 
+      {/* Service Centres – columns: name, city */}
       {tab === 'service_centres' && (
         <EntityTable
-          data={serviceCentres as unknown as EntityRow[]}
+          data={serviceCentres.map(s => ({ id: s.id, name: s.name, city: s.city ?? '' }))}
           loading={!!loading['lookups']}
           addLabel="Add Service Centre"
-          emptyMsg="No service centres yet"
+          emptyMsg="No service centres yet. Add one above."
           columns={[
-            { key: 'name',           label: 'Name',           placeholder: 'Centre name' },
-            { key: 'city',           label: 'City',           placeholder: 'e.g. Pune' },
-            { key: 'contact_person', label: 'Contact Person', placeholder: 'Full name' },
-            { key: 'phone',          label: 'Phone',          placeholder: '+91 XXXXX XXXXX' },
+            { key: 'name', label: 'Centre Name', placeholder: 'e.g. Chakan Service Centre' },
+            { key: 'city', label: 'City',         placeholder: 'e.g. Pune' },
           ]}
-          onAdd={createServiceCentre}
-          onUpdate={(id, f) => updateServiceCentre(id, f)}
+          onAdd={fields => createServiceCentre({ name: fields.name, city: fields.city })}
+          onUpdate={(id, fields) => updateServiceCentre(id, { name: fields.name, city: fields.city })}
           onDelete={deleteServiceCentre}
         />
       )}
 
+      {/* Customers – columns: name, city */}
       {tab === 'customers' && (
         <EntityTable
-          data={customers as unknown as EntityRow[]}
+          data={customers.map(c => ({ id: c.id, name: c.name, city: c.city ?? '' }))}
           loading={!!loading['lookups']}
           addLabel="Add Customer"
-          emptyMsg="No customers yet"
+          emptyMsg="No customers yet. Add one above."
           columns={[
-            { key: 'name',           label: 'Name',           placeholder: 'Customer name' },
-            { key: 'city',           label: 'City',           placeholder: 'e.g. Nashik' },
-            { key: 'contact_person', label: 'Contact Person', placeholder: 'Full name' },
-            { key: 'gst_number',     label: 'GST Number',     placeholder: '27AABCU9603R1ZX' },
+            { key: 'name', label: 'Customer Name', placeholder: 'e.g. Mahindra & Mahindra' },
+            { key: 'city', label: 'City',           placeholder: 'e.g. Nashik' },
           ]}
-          onAdd={createCustomer}
-          onUpdate={(id, f) => updateCustomer(id, f)}
+          onAdd={fields => createCustomer({ name: fields.name, city: fields.city })}
+          onUpdate={(id, fields) => updateCustomer(id, { name: fields.name, city: fields.city })}
           onDelete={deleteCustomer}
         />
       )}
 
+      {/* Users – full_name, role (DB enum), phone */}
       {tab === 'users' && <UsersPanel />}
     </PageShell>
   )

@@ -1,5 +1,6 @@
 /**
  * dataStore.ts – Zustand store that talks to Supabase via api.ts.
+ * All types match the EXACT database schema.
  */
 import { create } from 'zustand'
 import {
@@ -14,239 +15,232 @@ import {
   apiCreateCustomer, apiUpdateCustomer, apiDeleteCustomer,
   apiUpdateUserRole, apiUpdateUserProfile,
 } from '@/lib/api'
-import type {
-  DeliveryOrder, Job, Expense, QueueUpdate, Delivery,
-  DOStatus, JobStatus, ExpenseStatus, Supplier, ServiceCentre, Customer, Profile,
-} from '@/types'
 
-interface LoadingState { [key: string]: boolean }
+// ── Exact DB types ───────────────────────────────────────────────
+export interface Supplier       { id: string; name: string }
+export interface ServiceCentre  { id: string; name: string; city: string }
+export interface Customer       { id: string; name: string; city: string }
+export interface Profile        { id: string; full_name: string | null; role: 'admin'|'planner'|'purchase'|'agent' | null; phone: string | null; created_at: string }
+
+export type DOStatus  = 'draft'|'active'|'partially_dispatched'|'fully_dispatched'|'closed'
+export type JobStatus = 'assigned'|'acknowledged'|'at_service_centre'|'processing'|'processing_done'|'in_transit_to_customer'|'delivered'|'cancelled'
+export type ExpenseStatus = 'pending'|'approved'|'rejected'
+
+export interface DeliveryOrder {
+  id: string; do_number: string; expected_collection_date: string
+  status: DOStatus; document_url?: string | null; created_at: string
+  supplier?: Supplier | null
+  source_service_centre?: ServiceCentre | null
+  items?: any[]
+  jobs?: any[]
+}
+
+export interface Job {
+  id: string; job_number: string; delivery_destination: string
+  service_type: string; packing_type?: string | null
+  planned_delivery_date?: string | null; status: JobStatus
+  created_at: string; assigned_agent_id?: string | null
+  do?: any; customer?: Customer | null; assigned_agent?: Pick<Profile,'id'|'full_name'|'role'> | null
+  queue_updates?: any[]; expenses?: any[]; deliveries?: any[]
+}
+
+export interface Expense {
+  id: string; category: string; amount_inr: number
+  payee_description: string; settlement_method: string
+  status: ExpenseStatus; photo_url?: string | null
+  review_notes?: string | null; reviewed_at?: string | null
+  created_at: string; job_id: string; logged_by: string
+  reviewed_by?: string | null
+}
+
+export interface QueueUpdate {
+  id: string; job_id: string; queue_number?: string | null
+  checkin_time: string; estimated_processing_minutes?: number | null
+  processing_started_at?: string | null; processing_completed_at?: string | null
+  notes?: string | null; created_at: string
+  service_centre?: ServiceCentre | null
+}
+
+export interface Delivery {
+  id: string; job_id: string; customer_name: string
+  delivery_address: string; vehicle_number: string
+  delivered_at: string; delivery_status: string
+  destination_changed: boolean; old_destination?: string | null
+  new_destination?: string | null; change_reason?: string | null
+  authorised_by_office: boolean; created_at: string
+}
+
+type LS = Record<string, boolean>
 
 interface DataState {
-  // ── Master data ───────────────────────────────────────────────
   suppliers:      Supplier[]
   serviceCentres: ServiceCentre[]
   customers:      Customer[]
-  profiles:       Profile[]   // agents/managers (for dropdowns)
-  allProfiles:    Profile[]   // all users (for admin user management)
-
-  // ── Transactional data ────────────────────────────────────────
-  dos:          DeliveryOrder[]
-  jobs:         Job[]
-  expenses:     Expense[]
-  queueUpdates: QueueUpdate[]
-  deliveries:   Delivery[]
-
-  // ── Loading / error ───────────────────────────────────────────
-  loading: LoadingState
+  profiles:       Profile[]     // agents+planners for dropdowns
+  allProfiles:    Profile[]     // all users for admin panel
+  dos:            DeliveryOrder[]
+  jobs:           Job[]
+  expenses:       Expense[]
+  queueUpdates:   QueueUpdate[]
+  deliveries:     Delivery[]
+  loading: LS
   error:   string | null
 
-  // ── Fetch actions ─────────────────────────────────────────────
-  fetchLookups:      () => Promise<void>
-  fetchAllProfiles:  () => Promise<void>
-  fetchDOs:          () => Promise<void>
-  fetchDO:           (id: string) => Promise<void>
-  fetchJobs:         () => Promise<void>
-  fetchJob:          (id: string) => Promise<void>
-  fetchQueueUpdates: () => Promise<void>
-  fetchExpenses:     () => Promise<void>
-  fetchDeliveries:   () => Promise<void>
+  fetchLookups:     () => Promise<void>
+  fetchAllProfiles: () => Promise<void>
+  fetchDOs:         () => Promise<void>
+  fetchDO:          (id: string) => Promise<void>
+  fetchJobs:        () => Promise<void>
+  fetchJob:         (id: string) => Promise<void>
+  fetchQueueUpdates:() => Promise<void>
+  fetchExpenses:    () => Promise<void>
+  fetchDeliveries:  () => Promise<void>
 
-  // ── Transactional mutations ───────────────────────────────────
-  createDO:         (payload: Parameters<typeof apiCreateDO>[0])         => Promise<string>
-  updateDOStatus:   (id: string, status: DOStatus,   userId: string)     => Promise<void>
-  createJob:        (payload: Parameters<typeof apiCreateJob>[0])        => Promise<string>
-  updateJobStatus:  (id: string, status: JobStatus,  userId: string)     => Promise<void>
-  addQueueUpdate:   (payload: Parameters<typeof apiAddQueueUpdate>[0])   => Promise<void>
-  updateQueueEntry: (id: string, patch: Parameters<typeof apiUpdateQueueEntry>[1]) => Promise<void>
-  addExpense:       (payload: Parameters<typeof apiAddExpense>[0])       => Promise<void>
-  reviewExpense:    (id: string, status: ExpenseStatus, notes: string, userId: string) => Promise<void>
-  addDelivery:      (payload: Parameters<typeof apiAddDelivery>[0])      => Promise<void>
+  createDO:        (p: Parameters<typeof apiCreateDO>[0]) => Promise<string>
+  updateDOStatus:  (id: string, s: DOStatus, uid: string)  => Promise<void>
+  createJob:       (p: Parameters<typeof apiCreateJob>[0]) => Promise<string>
+  updateJobStatus: (id: string, s: JobStatus, uid: string) => Promise<void>
+  addQueueUpdate:  (p: Parameters<typeof apiAddQueueUpdate>[0]) => Promise<void>
+  updateQueueEntry:(id: string, p: Parameters<typeof apiUpdateQueueEntry>[1]) => Promise<void>
+  addExpense:      (p: Parameters<typeof apiAddExpense>[0]) => Promise<void>
+  reviewExpense:   (id: string, s: ExpenseStatus, notes: string, uid: string) => Promise<void>
+  addDelivery:     (p: Parameters<typeof apiAddDelivery>[0]) => Promise<void>
 
-  // ── Master data mutations (admin) ────────────────────────────
-  createSupplier:      (p: Parameters<typeof apiCreateSupplier>[0])      => Promise<void>
-  updateSupplier:      (id: string, p: Parameters<typeof apiUpdateSupplier>[1]) => Promise<void>
-  deleteSupplier:      (id: string)                                       => Promise<void>
-  createServiceCentre: (p: Parameters<typeof apiCreateServiceCentre>[0]) => Promise<void>
-  updateServiceCentre: (id: string, p: Parameters<typeof apiUpdateServiceCentre>[1]) => Promise<void>
+  // master data – suppliers (only name)
+  createSupplier:      (p: { name: string })             => Promise<void>
+  updateSupplier:      (id: string, p: { name?: string }) => Promise<void>
+  deleteSupplier:      (id: string)                      => Promise<void>
+  // master data – service_centres (name + city)
+  createServiceCentre: (p: { name: string; city?: string })              => Promise<void>
+  updateServiceCentre: (id: string, p: { name?: string; city?: string }) => Promise<void>
   deleteServiceCentre: (id: string)                                       => Promise<void>
-  createCustomer:      (p: Parameters<typeof apiCreateCustomer>[0])      => Promise<void>
-  updateCustomer:      (id: string, p: Parameters<typeof apiUpdateCustomer>[1]) => Promise<void>
+  // master data – customers (name + city)
+  createCustomer:      (p: { name: string; city?: string })              => Promise<void>
+  updateCustomer:      (id: string, p: { name?: string; city?: string }) => Promise<void>
   deleteCustomer:      (id: string)                                       => Promise<void>
-  updateUserRole:      (id: string, role: string)                         => Promise<void>
-  updateUserProfile:   (id: string, patch: Parameters<typeof apiUpdateUserProfile>[1]) => Promise<void>
+  // users
+  updateUserRole:    (id: string, role: string) => Promise<void>
+  updateUserProfile: (id: string, p: { full_name?: string; phone?: string }) => Promise<void>
 }
 
-const setLoading = (key: string, val: boolean) =>
+const setL = (key: string, val: boolean) =>
   (s: DataState): Partial<DataState> => ({ loading: { ...s.loading, [key]: val } })
 
 export const useDataStore = create<DataState>((set, get) => ({
-  suppliers:      [],
-  serviceCentres: [],
-  customers:      [],
-  profiles:       [],
-  allProfiles:    [],
-  dos:            [],
-  jobs:           [],
-  expenses:       [],
-  queueUpdates:   [],
-  deliveries:     [],
-  loading:        {},
-  error:          null,
+  suppliers: [], serviceCentres: [], customers: [], profiles: [], allProfiles: [],
+  dos: [], jobs: [], expenses: [], queueUpdates: [], deliveries: [],
+  loading: {}, error: null,
 
-  // ── Lookups ───────────────────────────────────────────────────
+  // ── Lookups
   fetchLookups: async () => {
-    set(setLoading('lookups', true))
+    set(setL('lookups', true))
     try {
       const [suppliers, serviceCentres, customers, profiles] = await Promise.all([
         apiGetSuppliers(), apiGetServiceCentres(), apiGetCustomers(), apiGetAgents(),
       ])
-      set({ suppliers, serviceCentres, customers, profiles })
+      set({
+        suppliers:      suppliers as Supplier[],
+        serviceCentres: serviceCentres as ServiceCentre[],
+        customers:      customers as Customer[],
+        profiles:       profiles as unknown as Profile[],
+      })
     } catch (e: unknown) {
-      set({ error: e instanceof Error ? e.message : 'Failed to load lookups' })
-    } finally {
-      set(setLoading('lookups', false))
-    }
+      set({ error: e instanceof Error ? e.message : 'Failed' })
+    } finally { set(setL('lookups', false)) }
   },
 
   fetchAllProfiles: async () => {
-    set(setLoading('allProfiles', true))
+    set(setL('allProfiles', true))
     try {
-      const allProfiles = await apiGetAllProfiles() as unknown as Profile[]
-      set({ allProfiles })
+      set({ allProfiles: await apiGetAllProfiles() as unknown as Profile[] })
     } catch (e: unknown) {
       set({ error: e instanceof Error ? e.message : 'Failed' })
-    } finally { set(setLoading('allProfiles', false)) }
+    } finally { set(setL('allProfiles', false)) }
   },
 
-  // ── DOs ───────────────────────────────────────────────────────
+  // ── DOs
   fetchDOs: async () => {
-    set(setLoading('dos', true))
-    try {
-      const dos = await apiGetDOs() as unknown as DeliveryOrder[]
-      set({ dos })
-    } catch (e: unknown) {
-      set({ error: e instanceof Error ? e.message : 'Failed to load DOs' })
-    } finally {
-      set(setLoading('dos', false))
-    }
+    set(setL('dos', true))
+    try { set({ dos: await apiGetDOs() as unknown as DeliveryOrder[] }) }
+    catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
+    finally { set(setL('dos', false)) }
   },
-
   fetchDO: async (id) => {
-    set(setLoading(`do_${id}`, true))
+    set(setL(`do_${id}`, true))
     try {
-      const do_ = await apiGetDO(id) as unknown as DeliveryOrder
-      set(s => ({ dos: s.dos.some(d => d.id === id) ? s.dos.map(d => d.id === id ? do_ : d) : [...s.dos, do_] }))
-    } catch (e: unknown) {
-      set({ error: e instanceof Error ? e.message : 'Failed to load DO' })
-    } finally { set(setLoading(`do_${id}`, false)) }
+      const d = await apiGetDO(id) as unknown as DeliveryOrder
+      set(s => ({ dos: s.dos.some(x => x.id === id) ? s.dos.map(x => x.id === id ? d : x) : [...s.dos, d] }))
+    } catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
+    finally { set(setL(`do_${id}`, false)) }
   },
 
-  // ── Jobs ──────────────────────────────────────────────────────
+  // ── Jobs
   fetchJobs: async () => {
-    set(setLoading('jobs', true))
-    try {
-      const jobs = await apiGetJobs() as unknown as Job[]
-      set({ jobs })
-    } catch (e: unknown) {
-      set({ error: e instanceof Error ? e.message : 'Failed to load jobs' })
-    } finally { set(setLoading('jobs', false)) }
+    set(setL('jobs', true))
+    try { set({ jobs: await apiGetJobs() as unknown as Job[] }) }
+    catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
+    finally { set(setL('jobs', false)) }
   },
-
   fetchJob: async (id) => {
-    set(setLoading(`job_${id}`, true))
+    set(setL(`job_${id}`, true))
     try {
-      const job = await apiGetJob(id) as unknown as Job
-      set(s => ({ jobs: s.jobs.some(j => j.id === id) ? s.jobs.map(j => j.id === id ? job : j) : [...s.jobs, job] }))
-    } catch (e: unknown) {
-      set({ error: e instanceof Error ? e.message : 'Failed to load job' })
-    } finally { set(setLoading(`job_${id}`, false)) }
+      const j = await apiGetJob(id) as unknown as Job
+      set(s => ({ jobs: s.jobs.some(x => x.id === id) ? s.jobs.map(x => x.id === id ? j : x) : [...s.jobs, j] }))
+    } catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
+    finally { set(setL(`job_${id}`, false)) }
   },
 
-  // ── Queue / Expenses / Deliveries ─────────────────────────────
+  // ── Queue / Expenses / Deliveries
   fetchQueueUpdates: async () => {
-    set(setLoading('queue', true))
+    set(setL('queue', true))
     try { set({ queueUpdates: await apiGetQueueUpdates() as unknown as QueueUpdate[] }) }
     catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
-    finally { set(setLoading('queue', false)) }
+    finally { set(setL('queue', false)) }
   },
-
   fetchExpenses: async () => {
-    set(setLoading('expenses', true))
+    set(setL('expenses', true))
     try { set({ expenses: await apiGetExpenses() as unknown as Expense[] }) }
     catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
-    finally { set(setLoading('expenses', false)) }
+    finally { set(setL('expenses', false)) }
   },
-
   fetchDeliveries: async () => {
-    set(setLoading('deliveries', true))
+    set(setL('deliveries', true))
     try { set({ deliveries: await apiGetDeliveries() as unknown as Delivery[] }) }
     catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
-    finally { set(setLoading('deliveries', false)) }
+    finally { set(setL('deliveries', false)) }
   },
 
-  // ── Transactional mutations ───────────────────────────────────
-  createDO: async (payload) => {
-    const row = await apiCreateDO(payload)
-    await get().fetchDOs()
-    return row.id
-  },
-
-  updateDOStatus: async (id, status, userId) => {
-    await apiUpdateDOStatus(id, status, userId)
+  // ── Transactional mutations
+  createDO: async (p) => { const r = await apiCreateDO(p); await get().fetchDOs(); return r.id },
+  updateDOStatus: async (id, status, uid) => {
+    await apiUpdateDOStatus(id, status, uid)
     set(s => ({ dos: s.dos.map(d => d.id === id ? { ...d, status } : d) }))
   },
-
-  createJob: async (payload) => {
-    const row = await apiCreateJob(payload)
-    await get().fetchJobs()
-    return row.id
-  },
-
-  updateJobStatus: async (id, status, userId) => {
-    await apiUpdateJobStatus(id, status, userId)
+  createJob: async (p) => { const r = await apiCreateJob(p); await get().fetchJobs(); return r.id },
+  updateJobStatus: async (id, status, uid) => {
+    await apiUpdateJobStatus(id, status, uid)
     set(s => ({ jobs: s.jobs.map(j => j.id === id ? { ...j, status } : j) }))
   },
-
-  addQueueUpdate: async (payload) => {
-    await apiAddQueueUpdate(payload)
-    await get().fetchQueueUpdates()
+  addQueueUpdate: async (p) => { await apiAddQueueUpdate(p); await get().fetchQueueUpdates() },
+  updateQueueEntry: async (id, p) => {
+    await apiUpdateQueueEntry(id, p)
+    set(s => ({ queueUpdates: s.queueUpdates.map(q => q.id === id ? { ...q, ...p } : q) }))
   },
-
-  updateQueueEntry: async (id, patch) => {
-    await apiUpdateQueueEntry(id, patch)
-    set(s => ({ queueUpdates: s.queueUpdates.map(q => q.id === id ? { ...q, ...patch } : q) }))
+  addExpense: async (p) => { await apiAddExpense(p); await get().fetchExpenses() },
+  reviewExpense: async (id, status, notes, uid) => {
+    await apiReviewExpense(id, status, notes, uid)
+    set(s => ({ expenses: s.expenses.map(e => e.id === id ? { ...e, status, review_notes: notes, reviewed_by: uid, reviewed_at: new Date().toISOString() } : e) }))
   },
+  addDelivery: async (p) => { await apiAddDelivery(p); await get().fetchDeliveries() },
 
-  addExpense: async (payload) => {
-    await apiAddExpense(payload)
-    await get().fetchExpenses()
-  },
-
-  reviewExpense: async (id, status, notes, userId) => {
-    await apiReviewExpense(id, status, notes, userId)
-    set(s => ({
-      expenses: s.expenses.map(e => e.id === id
-        ? { ...e, status, review_notes: notes, reviewed_by: userId, reviewed_at: new Date().toISOString() }
-        : e
-      )
-    }))
-  },
-
-  addDelivery: async (payload) => {
-    await apiAddDelivery(payload)
-    await get().fetchDeliveries()
-  },
-
-  // ── Master data mutations ─────────────────────────────────────
+  // ── Master data mutations (exact schema columns)
   createSupplier: async (p) => {
     await apiCreateSupplier(p)
-    const suppliers = await apiGetSuppliers() as unknown as Supplier[]
-    set({ suppliers })
+    set({ suppliers: await apiGetSuppliers() as Supplier[] })
   },
   updateSupplier: async (id, p) => {
     await apiUpdateSupplier(id, p)
-    const suppliers = await apiGetSuppliers() as unknown as Supplier[]
-    set({ suppliers })
+    set({ suppliers: await apiGetSuppliers() as Supplier[] })
   },
   deleteSupplier: async (id) => {
     await apiDeleteSupplier(id)
@@ -255,13 +249,11 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   createServiceCentre: async (p) => {
     await apiCreateServiceCentre(p)
-    const serviceCentres = await apiGetServiceCentres() as unknown as ServiceCentre[]
-    set({ serviceCentres })
+    set({ serviceCentres: await apiGetServiceCentres() as ServiceCentre[] })
   },
   updateServiceCentre: async (id, p) => {
     await apiUpdateServiceCentre(id, p)
-    const serviceCentres = await apiGetServiceCentres() as unknown as ServiceCentre[]
-    set({ serviceCentres })
+    set({ serviceCentres: await apiGetServiceCentres() as ServiceCentre[] })
   },
   deleteServiceCentre: async (id) => {
     await apiDeleteServiceCentre(id)
@@ -270,13 +262,11 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   createCustomer: async (p) => {
     await apiCreateCustomer(p)
-    const customers = await apiGetCustomers() as unknown as Customer[]
-    set({ customers })
+    set({ customers: await apiGetCustomers() as Customer[] })
   },
   updateCustomer: async (id, p) => {
     await apiUpdateCustomer(id, p)
-    const customers = await apiGetCustomers() as unknown as Customer[]
-    set({ customers })
+    set({ customers: await apiGetCustomers() as Customer[] })
   },
   deleteCustomer: async (id) => {
     await apiDeleteCustomer(id)
@@ -285,7 +275,7 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   updateUserRole: async (id, role) => {
     await apiUpdateUserRole(id, role)
-    set(s => ({ allProfiles: s.allProfiles.map(p => p.id === id ? { ...p, role: role as any } : p) }))
+    set(s => ({ allProfiles: s.allProfiles.map(p => p.id === id ? { ...p, role: role as Profile['role'] } : p) }))
   },
   updateUserProfile: async (id, patch) => {
     await apiUpdateUserProfile(id, patch)
