@@ -1,15 +1,52 @@
+/**
+ * ReportsPage.tsx — fully live Supabase data, no demo data.
+ * Accessible to: admin, planner, purchase. Blocked for agents.
+ */
+import { useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRole } from '@/hooks/useRole'
-import { DEMO_JOBS, DEMO_EXPENSES, DEMO_DELIVERIES } from '@/lib/demoData'
-import { formatINR } from '@/lib/utils'
-import { JOB_STATUS_LABELS } from '@/types'
-import type { JobStatus } from '@/types'
-import { BarChart3, TrendingUp, AlertTriangle, Receipt, Truck, Briefcase } from 'lucide-react'
+import { useDataStore } from '@/store/dataStore'
+import type { JobStatus, ExpenseStatus } from '@/store/dataStore'
+import { BarChart3, Receipt, Truck, Briefcase, AlertTriangle, Factory, Loader2 } from 'lucide-react'
+
+// ── helpers
+const formatINR = (n: number) =>
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
+
+const JOB_STATUS_LABELS: Record<JobStatus, string> = {
+  assigned:               'Assigned',
+  acknowledged:           'Acknowledged',
+  at_service_centre:      'At Service Centre',
+  processing:             'Processing',
+  processing_done:        'Processing Done',
+  in_transit_to_customer: 'In Transit',
+  delivered:              'Delivered',
+  cancelled:              'Cancelled',
+}
 
 const JS_COLORS: Record<JobStatus, string> = {
-  assigned:'#94a3b8', acknowledged:'#60a5fa', at_service_centre:'#a78bfa',
-  processing:'#fbbf24', processing_done:'#34d399',
-  in_transit_to_customer:'#2dd4bf', delivered:'#22c55e', cancelled:'#f87171',
+  assigned:               '#94a3b8',
+  acknowledged:           '#60a5fa',
+  at_service_centre:      '#a78bfa',
+  processing:             '#fbbf24',
+  processing_done:        '#34d399',
+  in_transit_to_customer: '#2dd4bf',
+  delivered:              '#22c55e',
+  cancelled:              '#f87171',
+}
+
+const EXP_COLORS: Record<string, string> = {
+  packing_materials: '#60a5fa',
+  worker_incentive:  '#a78bfa',
+  sc_extra_charge:   '#fbbf24',
+  miscellaneous:     '#94a3b8',
+}
+
+const EXP_LABELS: Record<string, string> = {
+  packing_materials: 'Packing Materials',
+  worker_incentive:  'Worker Incentive',
+  sc_extra_charge:   'SC Extra Charge',
+  miscellaneous:     'Miscellaneous',
 }
 
 const PageShell = ({ children }: { children: React.ReactNode }) => (
@@ -18,11 +55,125 @@ const PageShell = ({ children }: { children: React.ReactNode }) => (
   </div>
 )
 
+const Card = ({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) => (
+  <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', padding: '1.25rem', boxShadow: 'var(--sh-card)', ...style }}>
+    {children}
+  </div>
+)
+
+const SectionTitle = ({ icon: Icon, color, label }: { icon: React.ElementType; color: string; label: string }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+    <Icon size={15} style={{ color }} />
+    <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--tx1)' }}>{label}</span>
+  </div>
+)
+
+const BarRow = ({ label, value, max, color, suffix = '' }: { label: string; value: number; max: number; color: string; suffix?: string }) => (
+  <div style={{ marginBottom: '0.65rem' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
+      <span style={{ fontSize: '0.75rem', color: 'var(--tx2)', fontWeight: 500 }}>{label}</span>
+      <span style={{ fontSize: '0.75rem', fontWeight: 700, color }}>{value}{suffix}</span>
+    </div>
+    <div style={{ height: 7, borderRadius: 999, background: 'var(--g3)', overflow: 'hidden' }}>
+      <div style={{ height: '100%', borderRadius: 999, background: color, width: `${max > 0 ? (value / max) * 100 : 0}%`, transition: 'width 0.5s ease' }} />
+    </div>
+  </div>
+)
+
+const StatRow = ({ label, value, color }: { label: string; value: string | number; color: string }) => (
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.38rem 0', borderBottom: '1px solid var(--gb)' }}>
+    <span style={{ fontSize: '0.80rem', color: 'var(--tx3)' }}>{label}</span>
+    <span style={{ fontSize: '0.84rem', fontWeight: 700, color, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+  </div>
+)
+
+// ── Page
 export const ReportsPage = () => {
-  const { isAgent, canManage, user } = useRole()
+  const { isAgent } = useRole()
   const navigate = useNavigate()
 
-  // Redirect agents — no reports access
+  const {
+    jobs, expenses, deliveries, queueUpdates, dos,
+    fetchJobs, fetchExpenses, fetchDeliveries, fetchQueueUpdates, fetchDOs,
+    loading,
+  } = useDataStore()
+
+  const isLoading = loading['jobs'] || loading['expenses'] || loading['deliveries'] || loading['queue'] || loading['dos']
+
+  useEffect(() => {
+    fetchJobs()
+    fetchExpenses()
+    fetchDeliveries()
+    fetchQueueUpdates()
+    fetchDOs()
+  }, [])
+
+  // ── Derived metrics (memoized)
+  const jobStats = useMemo(() => {
+    const breakdown = (Object.keys(JOB_STATUS_LABELS) as JobStatus[]).map(s => ({
+      status: s,
+      label: JOB_STATUS_LABELS[s],
+      count: jobs.filter(j => j.status === s).length,
+      color: JS_COLORS[s],
+    })).filter(s => s.count > 0)
+    return {
+      breakdown,
+      maxCount: Math.max(...breakdown.map(s => s.count), 1),
+      total: jobs.length,
+      delivered: jobs.filter(j => j.status === 'delivered').length,
+      active: jobs.filter(j => !['delivered', 'cancelled'].includes(j.status)).length,
+      cancelled: jobs.filter(j => j.status === 'cancelled').length,
+    }
+  }, [jobs])
+
+  const expenseStats = useMemo(() => {
+    const byStatus = (s: ExpenseStatus) => expenses.filter(e => e.status === s).reduce((a, e) => a + Number(e.amount_inr), 0)
+    const total    = expenses.reduce((a, e) => a + Number(e.amount_inr), 0)
+    const approved = byStatus('approved')
+    const pending  = byStatus('pending')
+    const rejected = byStatus('rejected')
+
+    // by category
+    const cats = ['packing_materials', 'worker_incentive', 'sc_extra_charge', 'miscellaneous']
+    const byCat = cats.map(c => ({
+      key: c,
+      label: EXP_LABELS[c] ?? c,
+      color: EXP_COLORS[c] ?? '#94a3b8',
+      amount: expenses.filter(e => e.category === c).reduce((a, e) => a + Number(e.amount_inr), 0),
+      count:  expenses.filter(e => e.category === c).length,
+    })).filter(c => c.amount > 0)
+
+    const maxCat = Math.max(...byCat.map(c => c.amount), 1)
+    return { total, approved, pending, rejected, byCat, maxCat, count: expenses.length }
+  }, [expenses])
+
+  const deliveryStats = useMemo(() => ({
+    total:         deliveries.length,
+    deviations:    deliveries.filter(d => d.destination_changed).length,
+    unauthorised:  deliveries.filter(d => d.destination_changed && !d.authorised_by_office).length,
+    authorised:    deliveries.filter(d => d.destination_changed && d.authorised_by_office).length,
+    clean:         deliveries.filter(d => !d.destination_changed).length,
+  }), [deliveries])
+
+  const queueStats = useMemo(() => {
+    const completed = queueUpdates.filter(q => q.processing_completed_at)
+    const durations = completed.map(q => {
+      const start = new Date(q.processing_started_at ?? q.checkin_time).getTime()
+      const end   = new Date(q.processing_completed_at!).getTime()
+      return (end - start) / 60000 // minutes
+    }).filter(d => d > 0)
+    const avgMins = durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0
+    return { total: queueUpdates.length, completed: completed.length, avgMins }
+  }, [queueUpdates])
+
+  const doStats = useMemo(() => ({
+    total:  dos.length,
+    active: dos.filter(d => d.status === 'active').length,
+    closed: dos.filter(d => d.status === 'closed').length,
+    draft:  dos.filter(d => d.status === 'draft').length,
+  }), [dos])
+
+  // Blocked for agents
   if (isAgent) return (
     <PageShell>
       <div style={{ marginTop: '3rem', textAlign: 'center' }}>
@@ -39,23 +190,6 @@ export const ReportsPage = () => {
     </PageShell>
   )
 
-  // Job status breakdown
-  const statusBreakdown = (Object.keys(JOB_STATUS_LABELS) as JobStatus[]).map(s => ({
-    status: s, label: JOB_STATUS_LABELS[s],
-    count: DEMO_JOBS.filter(j => j.status === s).length,
-    color: JS_COLORS[s],
-  })).filter(s => s.count > 0)
-  const maxCount = Math.max(...statusBreakdown.map(s => s.count), 1)
-
-  // Expense summary
-  const totalExpenses  = DEMO_EXPENSES.reduce((a, e) => a + e.amount_inr, 0)
-  const approvedExpenses = DEMO_EXPENSES.filter(e => e.status === 'approved').reduce((a, e) => a + e.amount_inr, 0)
-  const pendingExpenses  = DEMO_EXPENSES.filter(e => e.status === 'pending').reduce((a, e) => a + e.amount_inr, 0)
-
-  // Delivery summary
-  const deviations = DEMO_DELIVERIES.filter(d => d.destination_changed).length
-  const unauthorised = DEMO_DELIVERIES.filter(d => d.destination_changed && !d.authorised_by_office).length
-
   return (
     <PageShell>
       {/* Header */}
@@ -63,26 +197,36 @@ export const ReportsPage = () => {
         <div className="breadcrumb" style={{ marginBottom: '0.4rem' }}>
           <span>SteelTrack</span><span className="sep">›</span><span className="active">Reports</span>
         </div>
-        <h1 style={{ color: 'var(--tx1)', fontSize: '1.375rem', fontWeight: 800, letterSpacing: '-0.02em', margin: 0 }}>Reports & Analytics</h1>
-        <p style={{ color: 'var(--tx3)', fontSize: '0.82rem', marginTop: '0.25rem' }}>Operations overview and key metrics</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h1 style={{ color: 'var(--tx1)', fontSize: '1.375rem', fontWeight: 800, letterSpacing: '-0.02em', margin: 0 }}>Reports & Analytics</h1>
+            <p style={{ color: 'var(--tx3)', fontSize: '0.82rem', marginTop: '0.25rem' }}>Live operations overview from Supabase</p>
+          </div>
+          {isLoading && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--tx4)', fontSize: '0.75rem' }}>
+              <Loader2 size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> Refreshing…
+            </div>
+          )}
+        </div>
       </div>
 
       {/* KPI row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '0.85rem', marginBottom: '1.75rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.85rem', marginBottom: '1.75rem' }}>
         {[
-          { label: 'Total Jobs',      value: DEMO_JOBS.length,       icon: Briefcase, color: '#60a5fa', caption: `${DEMO_JOBS.filter(j => j.status === 'delivered').length} delivered` },
-          { label: 'Total Expenses',  value: formatINR(totalExpenses), icon: Receipt, color: '#a78bfa', caption: `${formatINR(approvedExpenses)} approved` },
-          { label: 'Delivery Issues', value: deviations,              icon: AlertTriangle, color: '#fb923c', caption: `${unauthorised} unauthorised` },
+          { label: 'Total Jobs',      value: jobStats.total,         icon: Briefcase,     color: '#60a5fa', caption: `${jobStats.delivered} delivered` },
+          { label: 'Active Jobs',     value: jobStats.active,        icon: BarChart3,     color: '#2dd4bf', caption: `${jobStats.cancelled} cancelled` },
+          { label: 'Total Expenses',  value: formatINR(expenseStats.total), icon: Receipt, color: '#a78bfa', caption: `${formatINR(expenseStats.approved)} approved` },
+          { label: 'Delivery Issues', value: deliveryStats.deviations, icon: AlertTriangle, color: '#fb923c', caption: `${deliveryStats.unauthorised} unauthorised` },
+          { label: 'Active DOs',      value: doStats.active,         icon: Factory,       color: '#34d399', caption: `${doStats.total} total DOs` },
+          { label: 'Queue Updates',   value: queueStats.total,       icon: Truck,         color: '#fbbf24', caption: queueStats.avgMins > 0 ? `avg ${queueStats.avgMins}m process` : 'no time data' },
         ].map(k => {
           const Icon = k.icon
           return (
             <div key={k.label} style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderTop: `3px solid ${k.color}`, borderRadius: '0.85rem', padding: '1rem 1.1rem', boxShadow: 'var(--sh-card)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <div style={{ width: 30, height: 30, borderRadius: 8, background: `${k.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Icon size={14} style={{ color: k.color }} />
-                </div>
+              <div style={{ width: 30, height: 30, borderRadius: 8, background: `${k.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '0.5rem' }}>
+                <Icon size={14} style={{ color: k.color }} />
               </div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: k.color, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{k.value}</div>
+              <div style={{ fontSize: '1.65rem', fontWeight: 800, color: k.color, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{k.value}</div>
               <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--tx2)', marginTop: '0.3rem' }}>{k.label}</div>
               <div style={{ fontSize: '0.68rem', color: 'var(--tx4)', marginTop: 2 }}>{k.caption}</div>
             </div>
@@ -90,63 +234,72 @@ export const ReportsPage = () => {
         })}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-        {/* Job status breakdown bar chart */}
-        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', padding: '1.25rem', boxShadow: 'var(--sh-card)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.1rem' }}>
-            <BarChart3 size={16} style={{ color: '#60a5fa' }} />
-            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--tx1)' }}>Jobs by Status</span>
+      {/* Row 2: Jobs + Expenses */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+        {/* Jobs by status */}
+        <Card>
+          <SectionTitle icon={BarChart3} color="#60a5fa" label="Jobs by Status" />
+          {jobStats.breakdown.length === 0
+            ? <div style={{ color: 'var(--tx4)', fontSize: '0.82rem', textAlign: 'center', padding: '1.5rem 0' }}>No jobs yet</div>
+            : jobStats.breakdown.map(s => (
+              <BarRow key={s.status} label={s.label} value={s.count} max={jobStats.maxCount} color={s.color} />
+            ))
+          }
+          <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--gb)', display: 'flex', gap: '1rem' }}>
+            <span style={{ fontSize: '0.72rem', color: 'var(--tx3)' }}>Total: <strong style={{ color: 'var(--tx1)' }}>{jobStats.total}</strong></span>
+            <span style={{ fontSize: '0.72rem', color: '#22c55e' }}>Delivered: <strong>{jobStats.delivered}</strong></span>
+            <span style={{ fontSize: '0.72rem', color: '#f87171' }}>Cancelled: <strong>{jobStats.cancelled}</strong></span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-            {statusBreakdown.map(s => (
-              <div key={s.status}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--tx2)', fontWeight: 500 }}>{s.label}</span>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: s.color }}>{s.count}</span>
-                </div>
-                <div style={{ height: 7, borderRadius: 999, background: 'var(--g3)', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', borderRadius: 999, background: s.color, width: `${(s.count / maxCount) * 100}%`, transition: 'width 0.4s ease' }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        </Card>
 
-        {/* Expense & delivery summary */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', padding: '1.25rem', boxShadow: 'var(--sh-card)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.85rem' }}>
-              <Receipt size={15} style={{ color: '#a78bfa' }} />
-              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--tx1)' }}>Expense Breakdown</span>
-            </div>
-            {[{ label: 'Total', value: formatINR(totalExpenses), color: '#60a5fa' },
-              { label: 'Approved', value: formatINR(approvedExpenses), color: '#34d399' },
-              { label: 'Pending', value: formatINR(pendingExpenses), color: '#fbbf24' },
-              { label: 'Count', value: `${DEMO_EXPENSES.length} claims`, color: 'var(--tx2)' },
-            ].map(r => (
-              <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.35rem 0', borderBottom: '1px solid var(--gb)' }}>
-                <span style={{ fontSize: '0.80rem', color: 'var(--tx3)' }}>{r.label}</span>
-                <span style={{ fontSize: '0.84rem', fontWeight: 700, color: r.color, fontVariantNumeric: 'tabular-nums' }}>{r.value}</span>
-              </div>
-            ))}
+        {/* Expenses by category */}
+        <Card>
+          <SectionTitle icon={Receipt} color="#a78bfa" label="Expenses by Category" />
+          {expenseStats.byCat.length === 0
+            ? <div style={{ color: 'var(--tx4)', fontSize: '0.82rem', textAlign: 'center', padding: '1.5rem 0' }}>No expenses yet</div>
+            : expenseStats.byCat.map(c => (
+              <BarRow key={c.key} label={`${c.label} (${c.count})`} value={c.amount} max={expenseStats.maxCat} color={c.color} />
+            ))
+          }
+          <div style={{ marginTop: '0.75rem', paddingTop: '0.5rem', borderTop: '1px solid var(--gb)' }}>
+            <StatRow label="Total Claimed" value={formatINR(expenseStats.total)} color="#60a5fa" />
+            <StatRow label="Approved" value={formatINR(expenseStats.approved)} color="#22c55e" />
+            <StatRow label="Pending" value={formatINR(expenseStats.pending)} color="#fbbf24" />
+            <StatRow label="Rejected" value={formatINR(expenseStats.rejected)} color="#f87171" />
           </div>
-          <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', padding: '1.25rem', boxShadow: 'var(--sh-card)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.85rem' }}>
-              <Truck size={15} style={{ color: '#34d399' }} />
-              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--tx1)' }}>Delivery Overview</span>
-            </div>
-            {[{ label: 'Total Deliveries',   value: DEMO_DELIVERIES.length,   color: 'var(--tx1)' },
-              { label: 'Destination Changes', value: deviations,               color: '#fb923c' },
-              { label: 'Self-authorised',     value: unauthorised,              color: '#f87171' },
-              { label: 'Office authorised',   value: deviations - unauthorised, color: '#34d399' },
-            ].map(r => (
-              <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.35rem 0', borderBottom: '1px solid var(--gb)' }}>
-                <span style={{ fontSize: '0.80rem', color: 'var(--tx3)' }}>{r.label}</span>
-                <span style={{ fontSize: '0.84rem', fontWeight: 700, color: r.color }}>{r.value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        </Card>
+      </div>
+
+      {/* Row 3: Deliveries + Queue + DOs */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+        {/* Delivery overview */}
+        <Card>
+          <SectionTitle icon={Truck} color="#34d399" label="Deliveries" />
+          <StatRow label="Total Deliveries"     value={deliveryStats.total}        color="var(--tx1)" />
+          <StatRow label="Clean Deliveries"     value={deliveryStats.clean}        color="#22c55e" />
+          <StatRow label="Destination Changes"  value={deliveryStats.deviations}   color="#fb923c" />
+          <StatRow label="Office Authorised"    value={deliveryStats.authorised}   color="#34d399" />
+          <StatRow label="Self-authorised ⚠️"   value={deliveryStats.unauthorised} color="#f87171" />
+        </Card>
+
+        {/* Queue / SC stats */}
+        <Card>
+          <SectionTitle icon={Factory} color="#fbbf24" label="Service Centre Queue" />
+          <StatRow label="Total Check-ins"      value={queueStats.total}     color="var(--tx1)" />
+          <StatRow label="Completed Processing" value={queueStats.completed} color="#22c55e" />
+          <StatRow label="In Progress"          value={queueStats.total - queueStats.completed} color="#fbbf24" />
+          <StatRow label="Avg Process Time"     value={queueStats.avgMins > 0 ? `${queueStats.avgMins} min` : '—'} color="#60a5fa" />
+        </Card>
+
+        {/* DO summary */}
+        <Card>
+          <SectionTitle icon={Briefcase} color="#2dd4bf" label="Delivery Orders" />
+          <StatRow label="Total DOs"             value={doStats.total}  color="var(--tx1)" />
+          <StatRow label="Draft"                 value={doStats.draft}  color="#94a3b8" />
+          <StatRow label="Active"                value={doStats.active} color="#2dd4bf" />
+          <StatRow label="Closed"                value={doStats.closed} color="#22c55e" />
+          <StatRow label="Dispatched / Partial"  value={dos.filter(d => ['partially_dispatched','fully_dispatched'].includes(d.status)).length} color="#60a5fa" />
+        </Card>
       </div>
     </PageShell>
   )
