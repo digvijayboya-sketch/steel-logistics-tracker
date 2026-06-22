@@ -1,19 +1,18 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { DEMO_DOS, DEMO_SUPPLIERS, DEMO_SERVICE_CENTRES } from '@/lib/demoData'
+import { useNavigate } from 'react-router-dom'
 import { useRole } from '@/hooks/useRole'
+import { DEMO_DOS, DEMO_JOBS } from '@/lib/demoData'
 import { DO_STATUS_LABELS } from '@/types'
 import type { DOStatus } from '@/types'
 import { formatDate } from '@/lib/utils'
-import { FileText, PlusCircle, Search, Weight, ChevronRight } from 'lucide-react'
-import { toast } from 'sonner'
+import { Plus, ClipboardList, ChevronRight, FileText } from 'lucide-react'
 
-const S_COLORS: Record<DOStatus, { badge: string; dot: string }> = {
-  draft:               { badge: 'rgba(148,163,184,0.18)', dot: '#94a3b8' },
-  active:              { badge: 'rgba(96,165,250,0.18)',  dot: '#60a5fa' },
-  partially_dispatched:{ badge: 'rgba(251,191,36,0.18)',  dot: '#fbbf24' },
-  fully_dispatched:    { badge: 'rgba(52,211,153,0.18)',  dot: '#34d399' },
-  closed:              { badge: 'rgba(148,163,184,0.12)', dot: '#94a3b8' },
+const STATUS_COLORS: Record<DOStatus, string> = {
+  draft: '#94a3b8',
+  active: '#60a5fa',
+  partially_dispatched: '#fbbf24',
+  fully_dispatched: '#34d399',
+  closed: '#6b7280',
 }
 
 const PageShell = ({ children }: { children: React.ReactNode }) => (
@@ -23,174 +22,124 @@ const PageShell = ({ children }: { children: React.ReactNode }) => (
 )
 
 export const DOListPage = () => {
-  const { canCreate, canApprove, isAgent } = useRole()
+  const { isPurchase, isPlanner, isAdmin, isAgent } = useRole()
   const navigate = useNavigate()
-  const [search, setSearch]           = useState('')
-  const [filterStatus, setFilterStatus] = useState<DOStatus | ''>('')
-  const [showCreate, setShowCreate]   = useState(false)
-  const [form, setForm] = useState({ do_number: '', supplier_id: '', source_service_centre_id: '', expected_collection_date: '' })
+  const [tab, setTab] = useState<'dos' | 'jobs'>('dos')
 
-  // Agents cannot access DOs at all
-  if (isAgent) return (
-    <PageShell>
-      <div style={{
-        marginTop: '3rem', display: 'flex', flexDirection: 'column', alignItems: 'center',
-        gap: '0.75rem', textAlign: 'center',
-      }}>
-        <span style={{ fontSize: '2.5rem' }}>🚫</span>
-        <div style={{ color: 'var(--tx1)', fontWeight: 700, fontSize: '1rem' }}>Access restricted</div>
-        <div style={{ color: 'var(--tx3)', fontSize: '0.85rem', maxWidth: 320 }}>
-          Delivery Orders are managed by Planners and Purchase. Use your Job Cards to track work.
-        </div>
-        <button onClick={() => navigate('/jobs')}
-          style={{
-            marginTop: '0.5rem', padding: '0.55rem 1.25rem', borderRadius: 8,
-            background: 'linear-gradient(135deg,#2dd4bf,#0d9488)', border: 'none',
-            color: '#07211e', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer',
-          }}>
-          Go to My Jobs →
-        </button>
-      </div>
-    </PageShell>
+  // Jobs that are assigned/acknowledged (pipeline stage: needs queue)
+  const pipelineJobs = DEMO_JOBS.filter(j =>
+    ['assigned', 'acknowledged'].includes(j.status)
   )
 
-  const filtered = DEMO_DOS.filter(d => {
-    const ms = !search || d.do_number.toLowerCase().includes(search.toLowerCase()) || (d.supplier?.name ?? '').toLowerCase().includes(search.toLowerCase())
-    const mf = !filterStatus || d.status === filterStatus
-    return ms && mf
+  const tabStyle = (active: boolean) => ({
+    padding: '0.5rem 1.25rem',
+    borderRadius: '0.5rem 0.5rem 0 0',
+    border: 'none',
+    borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
+    background: 'transparent',
+    color: active ? 'var(--accent)' : 'var(--tx3)',
+    fontWeight: active ? 700 : 500,
+    fontSize: '0.88rem',
+    cursor: 'pointer',
+    transition: 'all 0.15s',
   })
-
-  const handleCreate = () => {
-    if (!form.do_number || !form.supplier_id) { toast.error('DO Number and Supplier are required'); return }
-    toast.success(`DO ${form.do_number} created`)
-    setShowCreate(false)
-    setForm({ do_number: '', supplier_id: '', source_service_centre_id: '', expected_collection_date: '' })
-  }
 
   return (
     <PageShell>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <div className="breadcrumb" style={{ marginBottom: '0.4rem' }}>
-            <span>SteelTrack</span><span className="sep">›</span><span className="active">Delivery Orders</span>
+            <span>SteelTrack</span><span className="sep">›</span>
+            <span className="active">{tab === 'dos' ? 'Delivery Orders' : 'Jobs'}</span>
           </div>
-          <h1 style={{ color: 'var(--tx1)', fontSize: '1.375rem', fontWeight: 800, letterSpacing: '-0.02em', margin: 0 }}>Delivery Orders</h1>
-          <p style={{ color: 'var(--tx3)', fontSize: '0.82rem', marginTop: '0.25rem' }}>
-            {DEMO_DOS.length} total · {DEMO_DOS.filter(d => d.status === 'active').length} active
-            {canApprove && ` · ${DEMO_DOS.filter(d => d.status === 'draft').length} drafts awaiting approval`}
-          </p>
+          <h1 style={{ color: 'var(--tx1)', fontSize: '1.375rem', fontWeight: 800, letterSpacing: '-0.02em', margin: 0 }}>Orders & Jobs</h1>
         </div>
-        {canCreate && (
-          <button
-            onClick={() => setShowCreate(true)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '0.4rem',
-              padding: '0.55rem 1.1rem', borderRadius: '0.6rem', border: 'none',
-              background: 'linear-gradient(135deg,#2dd4bf,#0d9488)',
-              color: '#07211e', fontWeight: 700, fontSize: '0.84rem',
-              cursor: 'pointer', boxShadow: '0 4px 14px rgba(45,212,191,0.28)',
-              transition: 'all 0.15s ease', flexShrink: 0,
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)' }}
-          >
-            <PlusCircle size={15} /> New DO
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          {tab === 'dos' && (isPurchase || isAdmin) && (
+            <button onClick={() => navigate('/dos/new')}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1.1rem', borderRadius: '0.6rem', border: 'none', background: 'linear-gradient(135deg,#2dd4bf,#0d9488)', color: '#07211e', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer', boxShadow: '0 4px 14px rgba(45,212,191,0.25)' }}>
+              <Plus size={14} /> New DO
+            </button>
+          )}
+          {tab === 'jobs' && (isPlanner || isAdmin) && (
+            <button onClick={() => navigate('/jobs/new')}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1.1rem', borderRadius: '0.6rem', border: 'none', background: 'linear-gradient(135deg,#2dd4bf,#0d9488)', color: '#07211e', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer', boxShadow: '0 4px 14px rgba(45,212,191,0.25)' }}>
+              <Plus size={14} /> New Job
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--gb)', marginBottom: '1.25rem' }}>
+        <button style={tabStyle(tab === 'dos')} onClick={() => setTab('dos')}>
+          <FileText size={13} style={{ marginRight: 5, verticalAlign: 'middle' }} />
+          Delivery Orders
+        </button>
+        {!isPurchase && (
+          <button style={tabStyle(tab === 'jobs')} onClick={() => setTab('jobs')}>
+            <ClipboardList size={13} style={{ marginRight: 5, verticalAlign: 'middle' }} />
+            Jobs
+            {pipelineJobs.length > 0 && (
+              <span style={{ marginLeft: 6, fontSize: '0.65rem', fontWeight: 700, padding: '0.1rem 0.45rem', borderRadius: 999, background: 'rgba(251,191,36,0.2)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>
+                {pipelineJobs.length}
+              </span>
+            )}
           </button>
         )}
       </div>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
-        <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180 }}>
-          <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--tx3)', pointerEvents: 'none' }} />
-          <input
-            value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search DO # or supplier…"
-            style={{
-              width: '100%', paddingLeft: 32, paddingRight: 12,
-              height: 36, borderRadius: '0.55rem',
-              border: '1px solid var(--input-border)', background: 'var(--input-bg)',
-              color: 'var(--tx1)', fontSize: '0.84rem', outline: 'none',
-              boxSizing: 'border-box',
-            }}
-          />
-        </div>
-        <select
-          value={filterStatus} onChange={e => setFilterStatus(e.target.value as DOStatus | '')}
-          style={{
-            height: 36, paddingLeft: 10, paddingRight: 10, borderRadius: '0.55rem',
-            border: '1px solid var(--input-border)', background: 'var(--input-bg)',
-            color: 'var(--tx2)', fontSize: '0.84rem', outline: 'none', cursor: 'pointer',
-          }}
-        >
-          <option value="">All Statuses</option>
-          {(Object.keys(DO_STATUS_LABELS) as DOStatus[]).map(s => (
-            <option key={s} value={s}>{DO_STATUS_LABELS[s]}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Table card */}
-      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', overflow: 'hidden' }}>
-        {filtered.length === 0 ? (
-          <div style={{ padding: '3rem', textAlign: 'center' }}>
-            <FileText size={32} style={{ color: 'var(--tx4)', margin: '0 auto 0.75rem' }} />
-            <div style={{ color: 'var(--tx2)', fontWeight: 600, fontSize: '0.9rem' }}>No delivery orders found</div>
-            <div style={{ color: 'var(--tx3)', fontSize: '0.80rem', marginTop: '0.25rem' }}>Adjust your filters or create a new DO.</div>
-          </div>
-        ) : (
+      {/* DO List */}
+      {tab === 'dos' && (
+        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', overflow: 'hidden', boxShadow: 'var(--sh-card)' }}>
           <div style={{ overflowX: 'auto' }}>
             <table className="st-table">
               <thead>
                 <tr>
-                  {['DO Number', 'Supplier', 'Source SC', 'Collection Date', 'Items / Weight', 'Status', ''].map(h => (
-                    <th key={h}>{h}</th>
-                  ))}
+                  <th>DO Number</th>
+                  <th>Supplier</th>
+                  <th>Service Centre</th>
+                  <th>Coils</th>
+                  <th>Status</th>
+                  <th>Collection Date</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(d => {
-                  const sc = S_COLORS[d.status]
-                  const totalMT = d.items.reduce((a, i) => a + i.weight_mt, 0)
+                {DEMO_DOS.map(d => {
+                  const color = STATUS_COLORS[d.status]
+                  const hasJob = DEMO_JOBS.some(j => j.do_id === d.id)
+                  const canPlan = (isPlanner || isAdmin) && d.status === 'active' && !hasJob
                   return (
                     <tr key={d.id}>
-                      <td>
-                        <div className="cell-primary">{d.do_number}</div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--tx4)', marginTop: 2 }}>{formatDate(d.created_at)}</div>
-                      </td>
+                      <td><span className="cell-primary">{d.do_number}</span></td>
                       <td>{d.supplier?.name ?? '—'}</td>
                       <td>{d.source_service_centre?.name ?? '—'}</td>
-                      <td className="cell-mono">{formatDate(d.expected_collection_date)}</td>
+                      <td className="cell-mono">{d.items?.length ?? 0}</td>
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--tx2)', fontSize: '0.82rem' }}>
-                          <Weight size={12} style={{ color: 'var(--tx3)' }} />
-                          <span>{d.items.length} item{d.items.length !== 1 ? 's' : ''}</span>
-                          <span style={{ color: 'var(--tx4)' }}>·</span>
-                          <span className="cell-mono">{totalMT.toFixed(1)} MT</span>
-                        </div>
-                      </td>
-                      <td>
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 5,
-                          padding: '0.22rem 0.6rem', borderRadius: 999,
-                          background: sc.badge, fontSize: '0.70rem', fontWeight: 700,
-                          letterSpacing: '0.04em', textTransform: 'uppercase',
-                          color: sc.dot,
-                          border: `1px solid ${sc.dot}44`,
-                        }}>
-                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: sc.dot, flexShrink: 0 }} />
+                        <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '0.18rem 0.5rem', borderRadius: 999, background: `${color}22`, color, border: `1px solid ${color}44`, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
                           {DO_STATUS_LABELS[d.status]}
                         </span>
                       </td>
+                      <td className="cell-mono" style={{ color: 'var(--tx3)', fontSize: '0.78rem' }}>{formatDate(d.expected_collection_date)}</td>
                       <td>
-                        <Link to={`/dos/${d.id}`} style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 3,
-                          color: '#2dd4bf', fontWeight: 600, fontSize: '0.78rem',
-                          textDecoration: 'none',
-                        }}>
-                          View <ChevronRight size={13} />
-                        </Link>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          {canPlan && (
+                            <button
+                              onClick={() => navigate(`/dos/${d.id}`)}
+                              style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.3rem 0.75rem', borderRadius: '0.45rem', border: 'none', background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', color: '#fff', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(124,58,237,0.3)' }}
+                            >
+                              <ClipboardList size={12} /> Plan
+                            </button>
+                          )}
+                          <button
+                            onClick={() => navigate(`/dos/${d.id}`)}
+                            style={{ display: 'flex', alignItems: 'center', gap: 2, color: 'var(--accent)', fontWeight: 600, fontSize: '0.78rem', background: 'none', border: 'none', cursor: 'pointer' }}
+                          >
+                            View <ChevronRight size={12} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -198,62 +147,57 @@ export const DOListPage = () => {
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Create DO Modal */}
-      {showCreate && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }} onClick={() => setShowCreate(false)} />
-          <div style={{
-            position: 'relative', zIndex: 1,
-            width: '100%', maxWidth: 440,
-            background: 'var(--card-bg)', border: '1px solid var(--card-border)',
-            borderRadius: '1rem', backdropFilter: 'blur(24px)',
-            padding: '1.75rem', boxShadow: 'var(--sh-lg)',
-            animation: 'slideUp 0.25s ease both',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--tx1)' }}>New Delivery Order</div>
-              <button onClick={() => setShowCreate(false)} style={{ background: 'none', border: 'none', color: 'var(--tx3)', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1 }}>×</button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-              {[{ label: 'DO Number *', key: 'do_number', ph: 'e.g. DO-2026-003', type: 'text' },
-                { label: 'Expected Collection Date', key: 'expected_collection_date', ph: '', type: 'date' },
-              ].map(f => (
-                <div key={f.key}>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--tx2)', marginBottom: '0.3rem' }}>{f.label}</label>
-                  <input type={f.type} placeholder={f.ph}
-                    value={(form as any)[f.key]}
-                    onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
-                    style={{ width: '100%', padding: '0.55rem 0.8rem', borderRadius: '0.55rem', border: '1px solid var(--input-border)', background: 'var(--input-bg)', color: 'var(--tx1)', fontSize: '0.84rem', outline: 'none', boxSizing: 'border-box' }}
-                  />
-                </div>
-              ))}
-              {[{ label: 'Supplier *', key: 'supplier_id', opts: DEMO_SUPPLIERS, ph: 'Select supplier…' },
-                { label: 'Source Service Centre', key: 'source_service_centre_id', opts: DEMO_SERVICE_CENTRES, ph: 'Select SC…' },
-              ].map(f => (
-                <div key={f.key}>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--tx2)', marginBottom: '0.3rem' }}>{f.label}</label>
-                  <select value={(form as any)[f.key]} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
-                    style={{ width: '100%', padding: '0.55rem 0.8rem', borderRadius: '0.55rem', border: '1px solid var(--input-border)', background: 'var(--input-bg)', color: 'var(--tx1)', fontSize: '0.84rem', outline: 'none', cursor: 'pointer', boxSizing: 'border-box' }}>
-                    <option value="">{f.ph}</option>
-                    {f.opts.map((o: any) => <option key={o.id} value={o.id}>{o.name}</option>)}
-                  </select>
-                </div>
-              ))}
-              <div style={{ display: 'flex', gap: '0.65rem', marginTop: '0.25rem' }}>
-                <button onClick={() => setShowCreate(false)}
-                  style={{ flex: 1, padding: '0.6rem', borderRadius: '0.55rem', border: '1px solid var(--gb)', background: 'var(--g2)', color: 'var(--tx2)', fontWeight: 600, fontSize: '0.84rem', cursor: 'pointer' }}>
-                  Cancel
-                </button>
-                <button onClick={handleCreate}
-                  style={{ flex: 1, padding: '0.6rem', borderRadius: '0.55rem', border: 'none', background: 'linear-gradient(135deg,#2dd4bf,#0d9488)', color: '#07211e', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer' }}>
-                  Create DO
-                </button>
+      {/* Jobs List (pipeline: assigned/acknowledged only) */}
+      {tab === 'jobs' && (
+        <div>
+          {pipelineJobs.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--tx3)', fontSize: '0.88rem' }}>No jobs pending queue assignment</div>
+          ) : (
+            <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', overflow: 'hidden', boxShadow: 'var(--sh-card)' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="st-table">
+                  <thead>
+                    <tr><th>Job #</th><th>Customer</th><th>Destination</th><th>Service Type</th><th>Agent</th><th>Status</th><th /></tr>
+                  </thead>
+                  <tbody>
+                    {pipelineJobs.map(j => (
+                      <tr key={j.id}>
+                        <td><span className="cell-primary">{j.job_number}</span></td>
+                        <td>{j.customer?.name ?? '—'}</td>
+                        <td>{j.delivery_destination}</td>
+                        <td style={{ color: 'var(--tx3)', fontSize: '0.8rem' }}>{j.service_type}</td>
+                        <td style={{ color: 'var(--tx3)' }}>{j.assigned_agent?.full_name ?? '—'}</td>
+                        <td>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '0.18rem 0.5rem', borderRadius: 999, background: 'rgba(96,165,250,0.15)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            {j.status}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button
+                              onClick={() => navigate(`/queue/log?job=${j.id}`)}
+                              style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.3rem 0.75rem', borderRadius: '0.45rem', border: 'none', background: 'linear-gradient(135deg,#34d399,#059669)', color: '#fff', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                            >
+                              + Queue
+                            </button>
+                            <button
+                              onClick={() => navigate(`/jobs/${j.id}`)}
+                              style={{ display: 'flex', alignItems: 'center', gap: 2, color: 'var(--accent)', fontWeight: 600, fontSize: '0.78rem', background: 'none', border: 'none', cursor: 'pointer' }}
+                            >
+                              View <ChevronRight size={12} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </PageShell>
