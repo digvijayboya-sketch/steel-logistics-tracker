@@ -1,15 +1,15 @@
 /**
  * ReportsPage.tsx — fully live Supabase data, no demo data.
  * Accessible to: admin, planner, purchase. Blocked for agents.
+ * Cancelled DO KPI card added to the main KPI row.
  */
 import { useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRole } from '@/hooks/useRole'
 import { useDataStore } from '@/store/dataStore'
 import type { JobStatus, ExpenseStatus } from '@/store/dataStore'
-import { BarChart3, Receipt, Truck, Briefcase, AlertTriangle, Factory, Loader2 } from 'lucide-react'
+import { BarChart3, Receipt, Truck, Briefcase, AlertTriangle, Factory, Loader2, XCircle } from 'lucide-react'
 
-// ── helpers
 const formatINR = (n: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
 
@@ -87,7 +87,6 @@ const StatRow = ({ label, value, color }: { label: string; value: string | numbe
   </div>
 )
 
-// ── Page
 export const ReportsPage = () => {
   const { isAgent } = useRole()
   const navigate = useNavigate()
@@ -108,7 +107,6 @@ export const ReportsPage = () => {
     fetchDOs()
   }, [])
 
-  // ── Derived metrics (memoized)
   const jobStats = useMemo(() => {
     const breakdown = (Object.keys(JOB_STATUS_LABELS) as JobStatus[]).map(s => ({
       status: s,
@@ -132,8 +130,6 @@ export const ReportsPage = () => {
     const approved = byStatus('approved')
     const pending  = byStatus('pending')
     const rejected = byStatus('rejected')
-
-    // by category
     const cats = ['packing_materials', 'worker_incentive', 'sc_extra_charge', 'miscellaneous']
     const byCat = cats.map(c => ({
       key: c,
@@ -142,7 +138,6 @@ export const ReportsPage = () => {
       amount: expenses.filter(e => e.category === c).reduce((a, e) => a + Number(e.amount_inr), 0),
       count:  expenses.filter(e => e.category === c).length,
     })).filter(c => c.amount > 0)
-
     const maxCat = Math.max(...byCat.map(c => c.amount), 1)
     return { total, approved, pending, rejected, byCat, maxCat, count: expenses.length }
   }, [expenses])
@@ -160,20 +155,23 @@ export const ReportsPage = () => {
     const durations = completed.map(q => {
       const start = new Date(q.processing_started_at ?? q.checkin_time).getTime()
       const end   = new Date(q.processing_completed_at!).getTime()
-      return (end - start) / 60000 // minutes
+      return (end - start) / 60000
     }).filter(d => d > 0)
     const avgMins = durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0
     return { total: queueUpdates.length, completed: completed.length, avgMins }
   }, [queueUpdates])
 
   const doStats = useMemo(() => ({
-    total:  dos.length,
-    active: dos.filter(d => d.status === 'active').length,
-    closed: dos.filter(d => d.status === 'closed').length,
-    draft:  dos.filter(d => d.status === 'draft').length,
+    total:      dos.length,
+    active:     dos.filter(d => d.status === 'active').length,
+    closed:     dos.filter(d => d.status === 'closed').length,
+    draft:      dos.filter(d => d.status === 'draft').length,
+    cancelled:  dos.filter(d => d.status === 'cancelled').length,
+    dispatched: dos.filter(d => ['partially_dispatched','fully_dispatched'].includes(d.status)).length,
+    // cancellation rate as a percentage
+    cancelRate: dos.length > 0 ? Math.round((dos.filter(d => d.status === 'cancelled').length / dos.length) * 100) : 0,
   }), [dos])
 
-  // Blocked for agents
   if (isAgent) return (
     <PageShell>
       <div style={{ marginTop: '3rem', textAlign: 'center' }}>
@@ -210,19 +208,21 @@ export const ReportsPage = () => {
         </div>
       </div>
 
-      {/* KPI row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.85rem', marginBottom: '1.75rem' }}>
+      {/* KPI row — 7 cards including Cancelled DOs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(148px, 1fr))', gap: '0.85rem', marginBottom: '1.75rem' }}>
         {[
-          { label: 'Total Jobs',      value: jobStats.total,         icon: Briefcase,     color: '#60a5fa', caption: `${jobStats.delivered} delivered` },
-          { label: 'Active Jobs',     value: jobStats.active,        icon: BarChart3,     color: '#2dd4bf', caption: `${jobStats.cancelled} cancelled` },
-          { label: 'Total Expenses',  value: formatINR(expenseStats.total), icon: Receipt, color: '#a78bfa', caption: `${formatINR(expenseStats.approved)} approved` },
-          { label: 'Delivery Issues', value: deliveryStats.deviations, icon: AlertTriangle, color: '#fb923c', caption: `${deliveryStats.unauthorised} unauthorised` },
-          { label: 'Active DOs',      value: doStats.active,         icon: Factory,       color: '#34d399', caption: `${doStats.total} total DOs` },
-          { label: 'Queue Updates',   value: queueStats.total,       icon: Truck,         color: '#fbbf24', caption: queueStats.avgMins > 0 ? `avg ${queueStats.avgMins}m process` : 'no time data' },
+          { label: 'Total Jobs',      value: jobStats.total,                icon: Briefcase,     color: '#60a5fa', caption: `${jobStats.delivered} delivered` },
+          { label: 'Active Jobs',     value: jobStats.active,               icon: BarChart3,     color: '#2dd4bf', caption: `${jobStats.cancelled} job(s) cancelled` },
+          { label: 'Cancelled Jobs',  value: jobStats.cancelled,            icon: XCircle,       color: '#f87171', caption: jobStats.total > 0 ? `${Math.round((jobStats.cancelled/jobStats.total)*100)}% of total` : '—' },
+          { label: 'Total Expenses',  value: formatINR(expenseStats.total), icon: Receipt,       color: '#a78bfa', caption: `${formatINR(expenseStats.approved)} approved` },
+          { label: 'Delivery Issues', value: deliveryStats.deviations,      icon: AlertTriangle, color: '#fb923c', caption: `${deliveryStats.unauthorised} unauthorised` },
+          { label: 'Active DOs',      value: doStats.active,                icon: Factory,       color: '#34d399', caption: `${doStats.cancelled} DO(s) cancelled · ${doStats.cancelRate}%` },
+          { label: 'Queue Updates',   value: queueStats.total,              icon: Truck,         color: '#fbbf24', caption: queueStats.avgMins > 0 ? `avg ${queueStats.avgMins}m process` : 'no time data' },
         ].map(k => {
           const Icon = k.icon
+          const isCancelCard = k.color === '#f87171'
           return (
-            <div key={k.label} style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderTop: `3px solid ${k.color}`, borderRadius: '0.85rem', padding: '1rem 1.1rem', boxShadow: 'var(--sh-card)' }}>
+            <div key={k.label} style={{ background: 'var(--card-bg)', border: isCancelCard ? '1px solid rgba(248,113,113,0.25)' : '1px solid var(--card-border)', borderTop: `3px solid ${k.color}`, borderRadius: '0.85rem', padding: '1rem 1.1rem', boxShadow: 'var(--sh-card)', background: isCancelCard ? 'rgba(248,113,113,0.04)' : 'var(--card-bg)' } as React.CSSProperties}>
               <div style={{ width: 30, height: 30, borderRadius: 8, background: `${k.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '0.5rem' }}>
                 <Icon size={14} style={{ color: k.color }} />
               </div>
@@ -236,7 +236,6 @@ export const ReportsPage = () => {
 
       {/* Row 2: Jobs + Expenses */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-        {/* Jobs by status */}
         <Card>
           <SectionTitle icon={BarChart3} color="#60a5fa" label="Jobs by Status" />
           {jobStats.breakdown.length === 0
@@ -245,14 +244,14 @@ export const ReportsPage = () => {
               <BarRow key={s.status} label={s.label} value={s.count} max={jobStats.maxCount} color={s.color} />
             ))
           }
-          <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--gb)', display: 'flex', gap: '1rem' }}>
+          <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--gb)', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.72rem', color: 'var(--tx3)' }}>Total: <strong style={{ color: 'var(--tx1)' }}>{jobStats.total}</strong></span>
             <span style={{ fontSize: '0.72rem', color: '#22c55e' }}>Delivered: <strong>{jobStats.delivered}</strong></span>
             <span style={{ fontSize: '0.72rem', color: '#f87171' }}>Cancelled: <strong>{jobStats.cancelled}</strong></span>
+            <span style={{ fontSize: '0.72rem', color: '#2dd4bf' }}>Active: <strong>{jobStats.active}</strong></span>
           </div>
         </Card>
 
-        {/* Expenses by category */}
         <Card>
           <SectionTitle icon={Receipt} color="#a78bfa" label="Expenses by Category" />
           {expenseStats.byCat.length === 0
@@ -272,7 +271,6 @@ export const ReportsPage = () => {
 
       {/* Row 3: Deliveries + Queue + DOs */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
-        {/* Delivery overview */}
         <Card>
           <SectionTitle icon={Truck} color="#34d399" label="Deliveries" />
           <StatRow label="Total Deliveries"     value={deliveryStats.total}        color="var(--tx1)" />
@@ -282,7 +280,6 @@ export const ReportsPage = () => {
           <StatRow label="Self-authorised ⚠️"   value={deliveryStats.unauthorised} color="#f87171" />
         </Card>
 
-        {/* Queue / SC stats */}
         <Card>
           <SectionTitle icon={Factory} color="#fbbf24" label="Service Centre Queue" />
           <StatRow label="Total Check-ins"      value={queueStats.total}     color="var(--tx1)" />
@@ -291,14 +288,21 @@ export const ReportsPage = () => {
           <StatRow label="Avg Process Time"     value={queueStats.avgMins > 0 ? `${queueStats.avgMins} min` : '—'} color="#60a5fa" />
         </Card>
 
-        {/* DO summary */}
+        {/* DO summary — with Cancelled row */}
         <Card>
           <SectionTitle icon={Briefcase} color="#2dd4bf" label="Delivery Orders" />
-          <StatRow label="Total DOs"             value={doStats.total}  color="var(--tx1)" />
-          <StatRow label="Draft"                 value={doStats.draft}  color="#94a3b8" />
-          <StatRow label="Active"                value={doStats.active} color="#2dd4bf" />
-          <StatRow label="Closed"                value={doStats.closed} color="#22c55e" />
-          <StatRow label="Dispatched / Partial"  value={dos.filter(d => ['partially_dispatched','fully_dispatched'].includes(d.status)).length} color="#60a5fa" />
+          <StatRow label="Total DOs"             value={doStats.total}      color="var(--tx1)" />
+          <StatRow label="Draft"                 value={doStats.draft}      color="#94a3b8" />
+          <StatRow label="Active"                value={doStats.active}     color="#2dd4bf" />
+          <StatRow label="Dispatched / Partial"  value={doStats.dispatched} color="#60a5fa" />
+          <StatRow label="Closed"                value={doStats.closed}     color="#22c55e" />
+          <StatRow label="Cancelled ❌"           value={doStats.cancelled}  color="#f87171" />
+          {doStats.cancelled > 0 && (
+            <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: '#f87171', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <XCircle size={11} />
+              {doStats.cancelRate}% cancellation rate
+            </div>
+          )}
         </Card>
       </div>
     </PageShell>

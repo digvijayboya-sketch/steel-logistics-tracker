@@ -1,6 +1,7 @@
 /**
  * dataStore.ts – Zustand store that talks to Supabase via api.ts.
  * All types match the EXACT database schema.
+ * DOStatus includes 'cancelled' (added for Cancel DO feature).
  */
 import { create } from 'zustand'
 import {
@@ -22,7 +23,8 @@ export interface ServiceCentre  { id: string; name: string; city: string }
 export interface Customer       { id: string; name: string; city: string }
 export interface Profile        { id: string; full_name: string | null; role: 'admin'|'planner'|'purchase'|'agent' | null; phone: string | null; created_at: string }
 
-export type DOStatus  = 'draft'|'active'|'partially_dispatched'|'fully_dispatched'|'closed'
+// ← 'cancelled' added
+export type DOStatus  = 'draft'|'active'|'partially_dispatched'|'fully_dispatched'|'closed'|'cancelled'
 export type JobStatus = 'assigned'|'acknowledged'|'at_service_centre'|'processing'|'processing_done'|'in_transit_to_customer'|'delivered'|'cancelled'
 export type ExpenseStatus = 'pending'|'approved'|'rejected'
 
@@ -76,8 +78,8 @@ interface DataState {
   suppliers:      Supplier[]
   serviceCentres: ServiceCentre[]
   customers:      Customer[]
-  profiles:       Profile[]     // agents+planners for dropdowns
-  allProfiles:    Profile[]     // all users for admin panel
+  profiles:       Profile[]
+  allProfiles:    Profile[]
   dos:            DeliveryOrder[]
   jobs:           Job[]
   expenses:       Expense[]
@@ -106,19 +108,15 @@ interface DataState {
   reviewExpense:   (id: string, s: ExpenseStatus, notes: string, uid: string) => Promise<void>
   addDelivery:     (p: Parameters<typeof apiAddDelivery>[0]) => Promise<void>
 
-  // master data – suppliers (only name)
   createSupplier:      (p: { name: string })             => Promise<void>
   updateSupplier:      (id: string, p: { name?: string }) => Promise<void>
   deleteSupplier:      (id: string)                      => Promise<void>
-  // master data – service_centres (name + city)
   createServiceCentre: (p: { name: string; city?: string })              => Promise<void>
   updateServiceCentre: (id: string, p: { name?: string; city?: string }) => Promise<void>
   deleteServiceCentre: (id: string)                                       => Promise<void>
-  // master data – customers (name + city)
   createCustomer:      (p: { name: string; city?: string })              => Promise<void>
   updateCustomer:      (id: string, p: { name?: string; city?: string }) => Promise<void>
   deleteCustomer:      (id: string)                                       => Promise<void>
-  // users
   updateUserRole:    (id: string, role: string) => Promise<void>
   updateUserProfile: (id: string, p: { full_name?: string; phone?: string }) => Promise<void>
 }
@@ -131,7 +129,6 @@ export const useDataStore = create<DataState>((set, get) => ({
   dos: [], jobs: [], expenses: [], queueUpdates: [], deliveries: [],
   loading: {}, error: null,
 
-  // ── Lookups
   fetchLookups: async () => {
     set(setL('lookups', true))
     try {
@@ -158,7 +155,6 @@ export const useDataStore = create<DataState>((set, get) => ({
     } finally { set(setL('allProfiles', false)) }
   },
 
-  // ── DOs
   fetchDOs: async () => {
     set(setL('dos', true))
     try { set({ dos: await apiGetDOs() as unknown as DeliveryOrder[] }) }
@@ -174,7 +170,6 @@ export const useDataStore = create<DataState>((set, get) => ({
     finally { set(setL(`do_${id}`, false)) }
   },
 
-  // ── Jobs
   fetchJobs: async () => {
     set(setL('jobs', true))
     try { set({ jobs: await apiGetJobs() as unknown as Job[] }) }
@@ -190,7 +185,6 @@ export const useDataStore = create<DataState>((set, get) => ({
     finally { set(setL(`job_${id}`, false)) }
   },
 
-  // ── Queue / Expenses / Deliveries
   fetchQueueUpdates: async () => {
     set(setL('queue', true))
     try { set({ queueUpdates: await apiGetQueueUpdates() as unknown as QueueUpdate[] }) }
@@ -210,7 +204,6 @@ export const useDataStore = create<DataState>((set, get) => ({
     finally { set(setL('deliveries', false)) }
   },
 
-  // ── Transactional mutations
   createDO: async (p) => { const r = await apiCreateDO(p); await get().fetchDOs(); return r.id },
   updateDOStatus: async (id, status, uid) => {
     await apiUpdateDOStatus(id, status, uid)
@@ -233,7 +226,6 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
   addDelivery: async (p) => { await apiAddDelivery(p); await get().fetchDeliveries() },
 
-  // ── Master data mutations (exact schema columns)
   createSupplier: async (p) => {
     await apiCreateSupplier(p)
     set({ suppliers: await apiGetSuppliers() as Supplier[] })

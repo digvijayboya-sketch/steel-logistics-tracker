@@ -1,3 +1,10 @@
+/**
+ * JobsListPage.tsx – live Supabase via useDataStore.
+ * AGENT view: cancelled jobs are HIDDEN by default (they only show if agent
+ *   explicitly clicks the Cancelled filter tab).
+ * PLANNER/ADMIN view: all jobs, with Cancelled filter tab available.
+ * Cancelled rows are visually dimmed and + Queue / → Deliver buttons are suppressed.
+ */
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRole } from '@/hooks/useRole'
@@ -5,7 +12,7 @@ import { useDataStore } from '@/store/dataStore'
 import { JOB_STATUS_LABELS } from '@/types'
 import type { JobStatus } from '@/types'
 import { formatDate } from '@/lib/utils'
-import { Briefcase, ChevronRight, Plus, Loader2 } from 'lucide-react'
+import { Briefcase, ChevronRight, Plus, Loader2, XCircle } from 'lucide-react'
 
 const JOB_COLORS: Record<JobStatus, string> = {
   assigned:               '#94a3b8',
@@ -40,22 +47,32 @@ export const JobsListPage = () => {
 
   const isLoading = !!loading['jobs']
 
+  // Agents see only their own jobs; by default cancelled are excluded for agents
   const baseJobs = isAgent
     ? jobs.filter(j => j.assigned_agent_id === user?.id)
     : jobs
 
+  // When filter is 'all', agents don't see cancelled jobs by default
+  // They have to explicitly click the Cancelled tab to see them
   const filtered = filter === 'all'
-    ? baseJobs
+    ? isAgent
+      ? baseJobs.filter(j => j.status !== 'cancelled')
+      : baseJobs
     : baseJobs.filter(j => j.status === filter)
 
-  // counts per status for badge numbers
   const counts = ALL_STATUSES.reduce<Partial<Record<JobStatus, number>>>((acc, s) => {
     acc[s] = baseJobs.filter(j => j.status === s).length
     return acc
   }, {})
 
+  const cancelledCount = counts['cancelled'] ?? 0
+
   const filterBtn = (val: JobStatus | 'all', label: string, color?: string) => {
-    const count = val === 'all' ? baseJobs.length : (counts[val as JobStatus] ?? 0)
+    const count = val === 'all'
+      ? isAgent
+        ? baseJobs.filter(j => j.status !== 'cancelled').length
+        : baseJobs.length
+      : (counts[val as JobStatus] ?? 0)
     const active = filter === val
     return (
       <button
@@ -97,7 +114,9 @@ export const JobsListPage = () => {
             {isAgent ? 'My Jobs' : 'All Jobs'}
           </h1>
           <p style={{ color: 'var(--tx3)', fontSize: '0.82rem', marginTop: '0.25rem' }}>
-            {isAgent ? 'Jobs assigned to you across all stages' : 'All jobs across agents and stages'}
+            {isAgent
+              ? `Jobs assigned to you · ${cancelledCount > 0 ? `${cancelledCount} cancelled (hidden)` : 'no cancelled jobs'}`
+              : 'All jobs across agents and stages'}
           </p>
         </div>
         {(isPlanner || isAdmin) && (
@@ -111,7 +130,7 @@ export const JobsListPage = () => {
       </div>
 
       {/* Filter bar */}
-      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1.1rem' }}>
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1.1rem', alignItems: 'center' }}>
         {filterBtn('all', 'All')}
         {filterBtn('assigned',               'Assigned',       JOB_COLORS.assigned)}
         {filterBtn('acknowledged',            'Acknowledged',   JOB_COLORS.acknowledged)}
@@ -120,8 +139,35 @@ export const JobsListPage = () => {
         {filterBtn('processing_done',         'Ready',          JOB_COLORS.processing_done)}
         {filterBtn('in_transit_to_customer',  'In Transit',     JOB_COLORS.in_transit_to_customer)}
         {filterBtn('delivered',               'Delivered',      JOB_COLORS.delivered)}
-        {filterBtn('cancelled',               'Cancelled',      JOB_COLORS.cancelled)}
+        {/* Cancelled tab — always visible but visually de-emphasised */}
+        {cancelledCount > 0 && (
+          <button
+            onClick={() => setFilter(filter === 'cancelled' ? 'all' : 'cancelled')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.35rem',
+              padding: '0.38rem 0.9rem', borderRadius: 999, fontSize: '0.76rem', fontWeight: 600,
+              border: filter === 'cancelled' ? '1px solid #f87171' : '1px dashed rgba(248,113,113,0.4)',
+              background: filter === 'cancelled' ? 'rgba(248,113,113,0.15)' : 'transparent',
+              color: filter === 'cancelled' ? '#f87171' : 'rgba(248,113,113,0.7)',
+              cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
+            }}
+          >
+            <XCircle size={11} />
+            Cancelled
+            <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '0.08rem 0.38rem', borderRadius: 999, background: 'rgba(248,113,113,0.15)', color: '#f87171' }}>
+              {cancelledCount}
+            </span>
+          </button>
+        )}
       </div>
+
+      {/* Agent notice when they have cancelled jobs */}
+      {isAgent && cancelledCount > 0 && filter !== 'cancelled' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 0.9rem', borderRadius: '0.6rem', background: 'rgba(248,113,113,0.07)', border: '1px solid rgba(248,113,113,0.2)', marginBottom: '0.85rem', fontSize: '0.78rem', color: 'rgba(248,113,113,0.9)' }}>
+          <XCircle size={12} />
+          <span><strong>{cancelledCount}</strong> of your job{cancelledCount !== 1 ? 's have' : ' has'} been cancelled by the operations team and {cancelledCount !== 1 ? 'are' : 'is'} hidden. <button onClick={() => setFilter('cancelled')} style={{ background: 'none', border: 'none', color: '#f87171', fontWeight: 700, cursor: 'pointer', fontSize: '0.78rem', padding: 0 }}>View them →</button></span>
+        </div>
+      )}
 
       {/* Table */}
       {isLoading ? (
@@ -155,11 +201,17 @@ export const JobsListPage = () => {
               <tbody>
                 {filtered.map(j => {
                   const color = JOB_COLORS[j.status]
+                  const isCancelled = j.status === 'cancelled'
                   const isDone = j.status === 'processing_done'
                   const canQueue = ['assigned', 'acknowledged'].includes(j.status)
                   return (
-                    <tr key={j.id}>
-                      <td><span className="cell-primary">{j.job_number}</span></td>
+                    <tr key={j.id} style={{ opacity: isCancelled ? 0.5 : 1 }}>
+                      <td>
+                        <span className="cell-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          {isCancelled && <XCircle size={11} style={{ color: '#f87171', flexShrink: 0 }} />}
+                          {j.job_number}
+                        </span>
+                      </td>
                       <td>{j.customer?.name ?? '—'}</td>
                       <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {j.delivery_destination}
@@ -183,7 +235,8 @@ export const JobsListPage = () => {
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                          {canQueue && (isAgent || isAdmin || isPlanner) && (
+                          {/* Suppress action buttons for cancelled jobs */}
+                          {!isCancelled && canQueue && (isAgent || isAdmin || isPlanner) && (
                             <button
                               onClick={() => navigate(`/queue/log?job=${j.id}`)}
                               style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.3rem 0.7rem', borderRadius: '0.45rem', border: 'none', background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', color: '#fff', fontWeight: 700, fontSize: '0.73rem', cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(124,58,237,0.25)' }}
@@ -191,7 +244,7 @@ export const JobsListPage = () => {
                               + Queue
                             </button>
                           )}
-                          {isDone && (
+                          {!isCancelled && isDone && (
                             <button
                               onClick={() => navigate(`/deliveries/log?job=${j.id}`)}
                               style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.3rem 0.7rem', borderRadius: '0.45rem', border: 'none', background: 'linear-gradient(135deg,#34d399,#059669)', color: '#fff', fontWeight: 700, fontSize: '0.73rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
@@ -201,7 +254,7 @@ export const JobsListPage = () => {
                           )}
                           <button
                             onClick={() => navigate(`/jobs/${j.id}`)}
-                            style={{ display: 'flex', alignItems: 'center', gap: 2, color: 'var(--accent)', fontWeight: 600, fontSize: '0.78rem', background: 'none', border: 'none', cursor: 'pointer' }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 2, color: isCancelled ? 'var(--tx4)' : 'var(--accent)', fontWeight: 600, fontSize: '0.78rem', background: 'none', border: 'none', cursor: 'pointer' }}
                           >
                             View <ChevronRight size={12} />
                           </button>
@@ -214,7 +267,6 @@ export const JobsListPage = () => {
             </table>
           </div>
 
-          {/* Footer row count */}
           <div style={{ padding: '0.6rem 1.25rem', borderTop: '1px solid var(--gb)', fontSize: '0.75rem', color: 'var(--tx4)' }}>
             {filtered.length} job{filtered.length !== 1 ? 's' : ''}{filter !== 'all' ? ` · filtered by "${JOB_STATUS_LABELS[filter as JobStatus]}"` : ''}
           </div>
