@@ -71,6 +71,7 @@ export interface Delivery {
   destination_changed: boolean; old_destination?: string | null
   new_destination?: string | null; change_reason?: string | null
   authorised_by_office: boolean; created_at: string
+  partial_reason?: string | null
 }
 
 type LS = Record<string, boolean>

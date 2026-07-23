@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
 import { useDataStore } from '@/store/dataStore'
-import { ArrowLeft, Camera, MapPin, Truck, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Camera, MapPin, Truck, AlertTriangle, CheckCircle2, X, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { getCoords } from '@/lib/utils'
+import { apiUploadPhoto } from '@/lib/api'
 import type { DeliveryStatus } from '@/types'
 
 const inp: React.CSSProperties = {
@@ -20,7 +21,7 @@ const lbl: React.CSSProperties = {
 export const LogDeliveryPage = () => {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { jobs, profiles, fetchJobs, fetchLookups, addDelivery } = useDataStore()
+  const { jobs, profiles, fetchJobs, fetchLookups, fetchJob, addDelivery, updateDOStatus } = useDataStore()
 
   useEffect(()=>{ fetchJobs(); fetchLookups() },[])
 
@@ -34,17 +35,37 @@ export const LogDeliveryPage = () => {
     vehicle_number: '',
     delivery_address: '',
     delivery_status: 'delivered' as DeliveryStatus,
+    partial_reason: '',
     destination_changed: false,
     change_reason: '',
     authorised_by_office: false,
   })
   const [gpsStatus, setGpsStatus]   = useState<'idle'|'fetching'|'got'|'error'>('idle')
   const [coords, setCoords]         = useState<{lat?:number;lng?:number}>({})
-  const [photoLabel, setPhotoLabel] = useState('')
+  const [photoFile, setPhotoFile]   = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [loadingLines, setLoadingLines] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const setField = (k:string,v:string|boolean)=>setForm(f=>({...f,[k]:v}))
   const selectedJob = jobs.find(j=>j.id===form.job_id)
+  const doLines = (selectedJob?.do as any)?.items as Array<{ id:string; coil_grade:string; thickness_mm:number; width_mm:number; quantity:number; weight_mt:number }> | undefined
+
+  // The jobs list doesn't carry full DO line items — fetch full job detail once selected
+  useEffect(() => {
+    if (!form.job_id) return
+    setLoadingLines(true)
+    fetchJob(form.job_id).finally(() => setLoadingLines(false))
+  }, [form.job_id])
+
+  // Pre-fill delivery address from the job's planned destination once selected
+  useEffect(() => {
+    if (selectedJob && !form.delivery_address) {
+      setField('delivery_address', selectedJob.delivery_destination)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedJob?.id])
 
   const fetchGPS = async () => {
     setGpsStatus('fetching')
@@ -52,15 +73,33 @@ export const LogDeliveryPage = () => {
     if (c.lat) { setCoords(c); setGpsStatus('got') } else setGpsStatus('error')
   }
 
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setPhotoFile(file)
+    setPhotoPreview(URL.createObjectURL(file))
+  }
+  const clearPhoto = () => {
+    setPhotoFile(null)
+    setPhotoPreview('')
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
   const handleSubmit = async (e:React.FormEvent) => {
     e.preventDefault()
     if (!form.job_id) { toast.error('Select a job'); return }
     if (!form.vehicle_number.trim()) { toast.error('Vehicle number required'); return }
     if (!form.delivery_address.trim()) { toast.error('Delivery address required'); return }
+    if (form.delivery_status==='partial' && !form.partial_reason.trim()) { toast.error('Enter a reason for the partial delivery'); return }
     if (form.destination_changed&&!form.change_reason.trim()) { toast.error('Enter reason for destination change'); return }
+    if (!photoFile) { toast.error('Unload photo proof is required'); return }
     setSubmitting(true)
     try {
       const loggedById = isAdmin&&form.logged_as ? form.logged_as : user?.id??''
+      const ext = photoFile.name.split('.').pop() || 'jpg'
+      const path = `${loggedById}/${form.job_id}/${Date.now()}.${ext}`
+      const photoUrl = await apiUploadPhoto('delivery-proofs', path, photoFile)
+
       await addDelivery({
         job_id: form.job_id,
         customer_name: selectedJob?.customer?.name??selectedJob?.delivery_destination??'',
@@ -68,21 +107,32 @@ export const LogDeliveryPage = () => {
         vehicle_number: form.vehicle_number.trim().toUpperCase(),
         delivered_at: new Date().toISOString(),
         delivery_status: form.delivery_status,
-        unloaded_photo_url: photoLabel||undefined,
+        unloaded_photo_url: photoUrl,
         final_lat: coords.lat,
         final_lng: coords.lng,
         destination_changed: form.destination_changed,
         old_destination: form.destination_changed ? selectedJob?.delivery_destination : undefined,
         new_destination: form.destination_changed ? form.delivery_address.trim() : undefined,
         change_reason: form.destination_changed ? form.change_reason.trim() : undefined,
+        partial_reason: form.delivery_status === 'partial' ? form.partial_reason.trim() : undefined,
         authorised_by_office: form.destination_changed ? form.authorised_by_office : undefined,
         created_by: loggedById,
-        created_at: new Date().toISOString(),
-      } as any)
+      })
+
+      // If this was a full delivery and every job on the linked DO is now terminal, close out the DO
+      const doId = selectedJob?.do?.id
+      if (form.delivery_status === 'delivered' && doId) {
+        const siblingJobs = jobs.filter(j => j.do?.id === doId)
+        const allTerminal = siblingJobs.every(j => j.id === form.job_id || ['delivered','cancelled'].includes(j.status))
+        if (allTerminal) {
+          await updateDOStatus(doId, 'fully_dispatched', loggedById).catch(() => {})
+        }
+      }
+
       toast.success('Delivery logged successfully')
       navigate('/deliveries')
-    } catch(e:any) {
-      toast.error(e.message??'Failed')
+    } catch(e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to log delivery')
     } finally { setSubmitting(false) }
   }
 
@@ -118,12 +168,50 @@ export const LogDeliveryPage = () => {
                 {myJobs.map(j=><option key={j.id} value={j.id}>{j.job_number} — {j.delivery_destination}</option>)}
               </select>
             </div>
+
+            {/* Customer + address confirmation */}
             {selectedJob&&(
-              <div style={{padding:'0.6rem 0.75rem',borderRadius:'0.5rem',background:'var(--accent-dim)',border:'1px solid rgba(45,212,191,0.2)',fontSize:'0.78rem'}}>
-                <div style={{color:'var(--tx2)'}}><span style={{fontWeight:700,color:'var(--accent)'}}>Planned dest:</span> {selectedJob.delivery_destination}</div>
-                <div style={{color:'var(--tx3)',marginTop:2}}><span style={{fontWeight:600}}>Customer:</span> {selectedJob.customer?.name??'—'}</div>
+              <div style={{padding:'0.7rem 0.85rem',borderRadius:'0.55rem',background:'var(--accent-dim)',border:'1px solid rgba(45,212,191,0.2)',fontSize:'0.78rem'}}>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+                  <CheckCircle2 size={13} style={{color:'var(--accent)'}}/>
+                  <span style={{fontWeight:700,color:'var(--accent)'}}>Confirm delivery details</span>
+                </div>
+                <div style={{color:'var(--tx2)'}}><span style={{fontWeight:600}}>Customer:</span> {selectedJob.customer?.name??'—'}</div>
+                <div style={{color:'var(--tx3)',marginTop:2}}><span style={{fontWeight:600}}>Planned dest:</span> {selectedJob.delivery_destination}</div>
               </div>
             )}
+
+            {/* Read-only DO line items — schema tracks delivery status per job, not per coil line */}
+            {selectedJob&&(
+              <div>
+                <label style={lbl}>Coil Items on this DO</label>
+                {loadingLines ? (
+                  <div style={{display:'flex',alignItems:'center',gap:6,color:'var(--tx4)',fontSize:'0.78rem'}}>
+                    <Loader2 size={12} style={{animation:'spin 0.8s linear infinite'}}/> Loading line items…
+                  </div>
+                ) : doLines && doLines.length > 0 ? (
+                  <div style={{border:'1px solid var(--gb)',borderRadius:'0.55rem',overflow:'hidden'}}>
+                    <table className="st-table">
+                      <thead><tr><th>Grade</th><th>Thick</th><th>Width</th><th>Qty</th><th>Wt (MT)</th></tr></thead>
+                      <tbody>
+                        {doLines.map(it=>(
+                          <tr key={it.id}>
+                            <td className="cell-primary">{it.coil_grade}</td>
+                            <td className="cell-mono">{it.thickness_mm}</td>
+                            <td className="cell-mono">{it.width_mm}</td>
+                            <td className="cell-mono">{it.quantity}</td>
+                            <td className="cell-mono">{it.weight_mt}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div style={{fontSize:'0.76rem',color:'var(--tx4)'}}>No coil items found on the linked DO</div>
+                )}
+              </div>
+            )}
+
             {isAdmin&&(
               <div>
                 <label style={lbl}>Logging On Behalf Of</label>
@@ -153,6 +241,14 @@ export const LogDeliveryPage = () => {
                   </label>
                 ))}
               </div>
+              {form.delivery_status==='partial' && (
+                <div style={{marginTop:'0.65rem'}}>
+                  <label style={lbl}>Reason for Partial Delivery *</label>
+                  <textarea style={{...inp,resize:'vertical',border:'1px solid #fbbf24',background:'rgba(251,191,36,0.07)'} as React.CSSProperties}
+                    rows={2} value={form.partial_reason} onChange={e=>setField('partial_reason',e.target.value)}
+                    placeholder="e.g. 2 of 3 coils unloaded, 1 held back for QC recheck…"/>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -190,13 +286,22 @@ export const LogDeliveryPage = () => {
         <div style={card}>
           <span style={{fontWeight:700,fontSize:'0.88rem',color:'var(--tx1)',display:'block',marginBottom:'0.85rem'}}>Evidence</span>
           <div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>
-            <button type="button" onClick={()=>{ setPhotoLabel('unload_'+Date.now()+'.jpg'); toast.success('Photo captured') }}
-              style={{width:'100%',padding:'1.25rem',borderRadius:'0.65rem',border:`2px dashed ${photoLabel?'#34d399':'var(--gb)'}`,background:photoLabel?'rgba(52,211,153,0.08)':'var(--g1)',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:'0.4rem'}}>
-              <Camera size={20} style={{color:photoLabel?'#34d399':'var(--tx4)'}}/>
-              <span style={{fontSize:'0.78rem',color:photoLabel?'#34d399':'var(--tx4)',fontWeight:600}}>
-                {photoLabel?`✓ ${photoLabel}`:'Photo of unloaded material at customer site'}
-              </span>
-            </button>
+            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoChange} style={{ display: 'none' }} id="delivery-photo-input" />
+            {photoPreview ? (
+              <div style={{ position: 'relative' }}>
+                <img src={photoPreview} alt="Unload proof preview" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: '0.65rem', border: '1px solid #34d399' }} />
+                <button type="button" onClick={clearPhoto}
+                  style={{ position: 'absolute', top: 8, right: 8, width: 26, height: 26, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.6)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                  <X size={13} />
+                </button>
+              </div>
+            ) : (
+              <label htmlFor="delivery-photo-input"
+                style={{width:'100%',padding:'1.25rem',borderRadius:'0.65rem',border:'2px dashed var(--gb)',background:'var(--g1)',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:'0.4rem'}}>
+                <Camera size={20} style={{color:'var(--tx4)'}}/>
+                <span style={{fontSize:'0.78rem',color:'var(--tx4)',fontWeight:600}}>Photo of unloaded material at customer site *</span>
+              </label>
+            )}
             <button type="button" onClick={fetchGPS} disabled={gpsStatus==='fetching'}
               style={{width:'100%',padding:'0.65rem 0.75rem',borderRadius:'0.55rem',border:`1px solid ${gpsStatus==='got'?'#34d399':'var(--gb)'}`,background:gpsStatus==='got'?'rgba(52,211,153,0.1)':'var(--g2)',color:gpsStatus==='got'?'#34d399':'var(--tx3)',cursor:'pointer',display:'flex',alignItems:'center',gap:'0.5rem',fontSize:'0.82rem',fontWeight:600}}>
               <MapPin size={14}/>
@@ -210,8 +315,9 @@ export const LogDeliveryPage = () => {
 
         <div style={{display:'flex',gap:'0.75rem',paddingBottom:'2rem'}}>
           <button type="button" onClick={()=>navigate(-1)} style={{flex:1,padding:'0.7rem',borderRadius:'0.6rem',border:'1px solid var(--gb)',background:'var(--g2)',color:'var(--tx2)',fontWeight:600,fontSize:'0.88rem',cursor:'pointer'}}>Cancel</button>
-          <button type="submit" disabled={submitting} style={{flex:1,padding:'0.7rem',borderRadius:'0.6rem',border:'none',background:'linear-gradient(135deg,#2dd4bf,#0d9488)',color:'#07211e',fontWeight:700,fontSize:'0.88rem',cursor:'pointer',opacity:submitting?0.65:1}}>
-            {submitting?'Logging…':'Log Delivery'}
+          <button type="submit" disabled={submitting} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem',padding:'0.7rem',borderRadius:'0.6rem',border:'none',background:'linear-gradient(135deg,#2dd4bf,#0d9488)',color:'#07211e',fontWeight:700,fontSize:'0.88rem',cursor:'pointer',opacity:submitting?0.65:1}}>
+            {submitting && <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} />}
+            {submitting?'Uploading…':'Log Delivery'}
           </button>
         </div>
       </form>

@@ -248,6 +248,7 @@ export const apiGetExpenses = async () => {
 export const apiAddExpense = async (payload: {
   job_id: string; category: string; amount_inr: number; payee_description: string
   settlement_method: string; photo_url?: string; gps_lat?: number; gps_lng?: number; logged_by: string
+  created_at?: string
 }) => {
   const { data, error } = await supabase.from('expenses').insert(payload).select().single()
   if (error) throw error; return data
@@ -265,7 +266,7 @@ export const apiGetDeliveries = async () => {
     .from('deliveries')
     .select(`id, customer_name, delivery_address, vehicle_number, delivered_at,
       delivery_status, destination_changed, old_destination, new_destination,
-      change_reason, authorised_by_office, created_at, job_id,
+      change_reason, partial_reason, authorised_by_office, created_at, job_id,
       created_by_profile:profiles!deliveries_created_by_fkey(id,full_name)`)
     .order('delivered_at', { ascending: false })
   if (error) throw error; return data ?? []
@@ -275,7 +276,7 @@ export const apiAddDelivery = async (payload: {
   delivered_at: string; delivery_status?: string; unloaded_photo_url?: string
   final_lat?: number; final_lng?: number; destination_changed?: boolean
   old_destination?: string; new_destination?: string; change_reason?: string
-  authorised_by_office?: boolean; created_by: string
+  partial_reason?: string; authorised_by_office?: boolean; created_by: string
 }) => {
   const { data, error } = await supabase.from('deliveries').insert(payload).select().single()
   if (error) throw error
@@ -286,13 +287,14 @@ export const apiAddDelivery = async (payload: {
 // ── Storage ─────────────────────────────────────────────────
 /**
  * Upload a file to storage and return the public/signed URL.
- * Buckets: 'expense-photos' (public) | 'do-documents' (private)
+ * Buckets: 'expense-photos' (public) | 'delivery-proofs' (public) | 'do-documents' (private)
  * Path convention:
  *   expense-photos/<userId>/<jobId>/<timestamp>.<ext>
+ *   delivery-proofs/<userId>/<jobId>/<timestamp>.<ext>
  *   do-documents/<userId>/<doId>/<timestamp>.<ext>
  */
 export const apiUploadPhoto = async (
-  bucket: 'expense-photos' | 'do-documents',
+  bucket: 'expense-photos' | 'delivery-proofs' | 'do-documents',
   path: string,
   file: File
 ): Promise<string> => {
@@ -300,7 +302,7 @@ export const apiUploadPhoto = async (
     .from(bucket)
     .upload(path, file, { upsert: true, contentType: file.type })
   if (error) throw error
-  if (bucket === 'expense-photos') {
+  if (bucket === 'expense-photos' || bucket === 'delivery-proofs') {
     const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(data.path)
     return urlData.publicUrl
   } else {
