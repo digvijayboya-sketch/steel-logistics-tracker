@@ -11,6 +11,7 @@ import {
   apiGetQueueUpdates, apiAddQueueUpdate, apiUpdateQueueEntry,
   apiGetExpenses, apiAddExpense, apiReviewExpense,
   apiGetDeliveries, apiAddDelivery,
+  apiGetAuditLog,
   apiCreateSupplier, apiUpdateSupplier, apiDeleteSupplier,
   apiCreateServiceCentre, apiUpdateServiceCentre, apiDeleteServiceCentre,
   apiCreateCustomer, apiUpdateCustomer, apiDeleteCustomer,
@@ -74,6 +75,13 @@ export interface Delivery {
   partial_reason?: string | null
 }
 
+export interface AuditLogEntry {
+  id: string; entity: string; entity_id: string; field: string
+  old_value: string | null; new_value: string | null
+  changed_by: string; changed_at: string
+  changed_by_profile?: Pick<Profile,'id'|'full_name'> | null
+}
+
 type LS = Record<string, boolean>
 
 interface DataState {
@@ -87,6 +95,7 @@ interface DataState {
   expenses:       Expense[]
   queueUpdates:   QueueUpdate[]
   deliveries:     Delivery[]
+  auditLog:       AuditLogEntry[]
   loading: LS
   error:   string | null
 
@@ -99,6 +108,7 @@ interface DataState {
   fetchQueueUpdates:() => Promise<void>
   fetchExpenses:    () => Promise<void>
   fetchDeliveries:  () => Promise<void>
+  fetchAuditLog:    () => Promise<void>
 
   createDO:        (p: Parameters<typeof apiCreateDO>[0]) => Promise<string>
   updateDOStatus:  (id: string, s: DOStatus, uid: string)  => Promise<void>
@@ -128,7 +138,7 @@ const setL = (key: string, val: boolean) =>
 
 export const useDataStore = create<DataState>((set, get) => ({
   suppliers: [], serviceCentres: [], customers: [], profiles: [], allProfiles: [],
-  dos: [], jobs: [], expenses: [], queueUpdates: [], deliveries: [],
+  dos: [], jobs: [], expenses: [], queueUpdates: [], deliveries: [], auditLog: [],
   loading: {}, error: null,
 
   fetchLookups: async () => {
@@ -204,6 +214,12 @@ export const useDataStore = create<DataState>((set, get) => ({
     try { set({ deliveries: await apiGetDeliveries() as unknown as Delivery[] }) }
     catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
     finally { set(setL('deliveries', false)) }
+  },
+  fetchAuditLog: async () => {
+    set(setL('auditLog', true))
+    try { set({ auditLog: await apiGetAuditLog() as unknown as AuditLogEntry[] }) }
+    catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
+    finally { set(setL('auditLog', false)) }
   },
 
   createDO: async (p) => { const r = await apiCreateDO(p); await get().fetchDOs(); return r.id },

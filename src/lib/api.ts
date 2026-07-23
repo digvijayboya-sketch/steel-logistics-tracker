@@ -281,6 +281,7 @@ export const apiAddDelivery = async (payload: {
   const { data, error } = await supabase.from('deliveries').insert(payload).select().single()
   if (error) throw error
   await supabase.from('jobs').update({ status: 'delivered' }).eq('id', payload.job_id)
+  await apiWriteAudit({ entity: 'deliveries', entity_id: data.id, field: 'delivery_status', old_value: '', new_value: payload.delivery_status ?? 'delivered', changed_by: payload.created_by })
   return data
 }
 
@@ -323,6 +324,16 @@ export const apiGetDODocumentUrl = async (path: string): Promise<string> => {
     .from('do-documents').createSignedUrl(path, 3600)
   if (error) throw error
   return data.signedUrl
+}
+
+export const apiGetAuditLog = async () => {
+  const { data, error } = await supabase
+    .from('audit_log')
+    .select(`id, entity, entity_id, field, old_value, new_value, changed_by, changed_at,
+      changed_by_profile:profiles!audit_log_changed_by_fkey(id,full_name)`)
+    .order('changed_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
 }
 
 // ── Audit log ────────────────────────────────────────────────

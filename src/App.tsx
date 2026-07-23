@@ -19,6 +19,7 @@ import { DeliveriesPage } from '@/pages/DeliveriesPage'
 import { LogDeliveryPage } from '@/pages/LogDeliveryPage'
 import { ReportsPage } from '@/pages/ReportsPage'
 import { ReconciliationPage } from '@/pages/ReconciliationPage'
+import { AuditTrailPage } from '@/pages/AuditTrailPage'
 import { MasterDataPage } from '@/pages/MasterDataPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="deliveries/log" element={<LogDeliveryPage />} />
           <Route path="reports"        element={<ReportsPage />} />
           <Route path="reconciliation" element={<ReconciliationPage />} />
+          <Route path="audit"          element={<AuditTrailPage />} />
           <Route path="master"         element={<MasterDataPage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
