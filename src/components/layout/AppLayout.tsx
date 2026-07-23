@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
 import {
   FileText, Briefcase, Factory, ClipboardList,
-  Receipt, Truck, BarChart3, LogOut, X, Sun, Moon, LayoutDashboard, Menu, Database,
+  Receipt, Truck, BarChart3, LogOut, X, Sun, Moon, LayoutDashboard, Menu, Database, Scale,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { to: '/expenses',   label: 'Expenses',   icon: Receipt,          roles: ['admin','planner','agent','manager'] },
   { to: '/deliveries', label: 'Deliveries', icon: Truck,            roles: ['admin','planner','agent','manager'] },
   { to: '/reports',    label: 'Reports',    icon: BarChart3,        roles: ['admin','planner','purchase','manager'] },
+  { to: '/reconciliation', label: 'Reconciliation', icon: Scale,    roles: ['admin','manager'] },
   { to: '/master',     label: 'Master Data',icon: Database,         roles: ['admin'] },
 ]
 

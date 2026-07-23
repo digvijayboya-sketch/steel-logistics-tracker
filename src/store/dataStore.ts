@@ -53,6 +53,7 @@ export interface Expense {
   review_notes?: string | null; reviewed_at?: string | null
   created_at: string; job_id: string; logged_by: string
   reviewed_by?: string | null
+  logged_by_profile?: Pick<Profile,'id'|'full_name'> | null
 }
 
 export interface QueueUpdate {
