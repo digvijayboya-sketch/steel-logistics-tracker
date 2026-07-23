@@ -251,7 +251,7 @@ export const LogQueuePage = () => {
               <div>
                 <label style={lbl}>Logging On Behalf Of</label>
                 <select style={inp} value={form.logged_as} onChange={e=>setField('logged_as',e.target.value)}>
-                  <option value={user?.id??''}>{user?.full_name} (you)</option>
+                  <option value={user?.id??''}>{user?.name} (you)</option>
                   {agents.filter(a=>a.id!==user?.id).map(a=><option key={a.id} value={a.id}>{a.full_name}</option>)}
                 </select>
               </div>

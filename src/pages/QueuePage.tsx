@@ -1,7 +1,9 @@
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { DEMO_QUEUE_UPDATES, DEMO_JOBS } from '@/lib/demoData'
+import { useDataStore } from '@/store/dataStore'
 import { formatDate } from '@/lib/utils'
-import { Plus, Clock, CheckCircle2, PlayCircle } from 'lucide-react'
+import { Plus, Clock, CheckCircle2, PlayCircle, AlertTriangle, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 const PageShell = ({ children }: { children: React.ReactNode }) => (
   <div style={{ minHeight: '100%', padding: '1.5rem 1.75rem', maxWidth: 1200, margin: '0 auto' }}>
@@ -11,25 +13,52 @@ const PageShell = ({ children }: { children: React.ReactNode }) => (
 
 export const QueuePage = () => {
   const navigate = useNavigate()
+  const { queueUpdates, jobs, loading, error, fetchQueueUpdates, fetchJobs, updateQueueEntry } = useDataStore()
 
-  const grouped = DEMO_QUEUE_UPDATES.reduce<Record<string, typeof DEMO_QUEUE_UPDATES>>((acc, q) => {
+  useEffect(() => { fetchQueueUpdates(); fetchJobs() }, [])
+
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const isLoading = loading['queue'] || loading['jobs']
+
+  const grouped = queueUpdates.reduce<Record<string, typeof queueUpdates>>((acc, q) => {
     const key = q.service_centre?.name ?? 'Unknown'
     if (!acc[key]) acc[key] = []
     acc[key].push(q)
     return acc
   }, {})
 
-  const getJob = (jobId: string) => DEMO_JOBS.find(j => j.id === jobId)
+  const getJob = (jobId: string) => jobs.find(j => j.id === jobId)
 
-  const stageColor = (q: typeof DEMO_QUEUE_UPDATES[0]) => {
+  const stageColor = (q: typeof queueUpdates[0]) => {
     if (q.processing_completed_at) return '#34d399'
     if (q.processing_started_at)   return '#fbbf24'
     return '#60a5fa'
   }
-  const stageLabel = (q: typeof DEMO_QUEUE_UPDATES[0]) => {
+  const stageLabel = (q: typeof queueUpdates[0]) => {
     if (q.processing_completed_at) return 'Done'
     if (q.processing_started_at)   return 'Processing'
     return 'In Queue'
+  }
+
+  const handleStart = async (id: string) => {
+    setBusyId(id)
+    try {
+      await updateQueueEntry(id, { processing_started_at: new Date().toISOString() })
+      toast.success('Marked as processing')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to update')
+    } finally { setBusyId(null) }
+  }
+
+  const handleMarkDone = async (id: string, jobId: string) => {
+    setBusyId(id)
+    try {
+      await updateQueueEntry(id, { processing_completed_at: new Date().toISOString() })
+      navigate(`/deliveries/log?job=${jobId}`)
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to update')
+    } finally { setBusyId(null) }
   }
 
   return (
@@ -48,10 +77,23 @@ export const QueuePage = () => {
         </button>
       </div>
 
-      {Object.keys(grouped).length === 0 ? (
+      {error && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.7rem 1rem', borderRadius: '0.7rem', marginBottom: '1.25rem', background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.28)' }}>
+          <AlertTriangle size={15} style={{ color: '#f87171', flexShrink: 0 }} />
+          <div style={{ fontSize: '0.84rem', color: 'var(--tx1)' }}>Couldn't load queue. <span style={{ color: 'var(--tx2)' }}>{error}</span></div>
+        </div>
+      )}
+
+      {isLoading && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--tx3)', fontSize: '0.82rem', marginBottom: '1rem' }}>
+          <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> Loading live data…
+        </div>
+      )}
+
+      {!isLoading && Object.keys(grouped).length === 0 ? (
         <div style={{ textAlign: 'center', padding: '3rem', background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', color: 'var(--tx3)' }}>No queue entries yet</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(Object.keys(grouped).length, 3)}, 1fr)`, gap: '1rem', alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(Math.max(Object.keys(grouped).length, 1), 3)}, 1fr)`, gap: '1rem', alignItems: 'start' }}>
           {Object.entries(grouped).map(([scName, entries]) => (
             <div key={scName} style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', overflow: 'hidden', boxShadow: 'var(--sh-card)' }}>
               <div style={{ padding: '0.75rem 1rem', background: 'var(--g1)', borderBottom: '1px solid var(--gb)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -67,6 +109,7 @@ export const QueuePage = () => {
                   const label = stageLabel(q)
                   const isDone = !!q.processing_completed_at
                   const isProcessing = !!q.processing_started_at && !isDone
+                  const isBusy = busyId === q.id
                   return (
                     <div key={q.id} style={{ background: 'var(--g2)', border: `1px solid var(--gb)`, borderLeft: `3px solid ${color}`, borderRadius: '0.65rem', padding: '0.75rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
@@ -82,13 +125,13 @@ export const QueuePage = () => {
                       {!isDone && (
                         <div style={{ display: 'flex', gap: '0.4rem' }}>
                           {!isProcessing && (
-                            <button style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', padding: '0.3rem 0', borderRadius: '0.4rem', border: '1px solid rgba(251,191,36,0.35)', background: 'rgba(251,191,36,0.1)', color: '#fbbf24', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer' }}>
+                            <button disabled={isBusy} onClick={() => handleStart(q.id)}
+                              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', padding: '0.3rem 0', borderRadius: '0.4rem', border: '1px solid rgba(251,191,36,0.35)', background: 'rgba(251,191,36,0.1)', color: '#fbbf24', fontWeight: 700, fontSize: '0.72rem', cursor: isBusy ? 'not-allowed' : 'pointer', opacity: isBusy ? 0.6 : 1 }}>
                               <PlayCircle size={11} /> Start
                             </button>
                           )}
-                          <button
-                            onClick={() => navigate(`/deliveries/log?job=${q.job_id}`)}
-                            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', padding: '0.3rem 0', borderRadius: '0.4rem', border: '1px solid rgba(52,211,153,0.35)', background: 'rgba(52,211,153,0.1)', color: '#34d399', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer' }}
+                          <button disabled={isBusy} onClick={() => handleMarkDone(q.id, q.job_id)}
+                            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', padding: '0.3rem 0', borderRadius: '0.4rem', border: '1px solid rgba(52,211,153,0.35)', background: 'rgba(52,211,153,0.1)', color: '#34d399', fontWeight: 700, fontSize: '0.72rem', cursor: isBusy ? 'not-allowed' : 'pointer', opacity: isBusy ? 0.6 : 1 }}
                           >
                             <CheckCircle2 size={11} /> Mark Done
                           </button>

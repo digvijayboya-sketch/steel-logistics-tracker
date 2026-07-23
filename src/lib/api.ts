@@ -271,6 +271,10 @@ export const apiGetDeliveries = async () => {
     .order('delivered_at', { ascending: false })
   if (error) throw error; return data ?? []
 }
+export const apiAuthoriseDelivery = async (id: string) => {
+  const { error } = await supabase.from('deliveries').update({ authorised_by_office: true }).eq('id', id)
+  if (error) throw error
+}
 export const apiAddDelivery = async (payload: {
   job_id: string; customer_name: string; delivery_address: string; vehicle_number: string
   delivered_at: string; delivery_status?: string; unloaded_photo_url?: string

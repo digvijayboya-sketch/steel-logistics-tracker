@@ -10,7 +10,7 @@ import {
   apiGetJobs, apiGetJob, apiCreateJob, apiUpdateJobStatus,
   apiGetQueueUpdates, apiAddQueueUpdate, apiUpdateQueueEntry,
   apiGetExpenses, apiAddExpense, apiReviewExpense,
-  apiGetDeliveries, apiAddDelivery,
+  apiGetDeliveries, apiAddDelivery, apiAuthoriseDelivery,
   apiGetAuditLog,
   apiCreateSupplier, apiUpdateSupplier, apiDeleteSupplier,
   apiCreateServiceCentre, apiUpdateServiceCentre, apiDeleteServiceCentre,
@@ -119,6 +119,7 @@ interface DataState {
   addExpense:      (p: Parameters<typeof apiAddExpense>[0]) => Promise<void>
   reviewExpense:   (id: string, s: ExpenseStatus, notes: string, uid: string) => Promise<void>
   addDelivery:     (p: Parameters<typeof apiAddDelivery>[0]) => Promise<void>
+  authoriseDelivery: (id: string) => Promise<void>
 
   createSupplier:      (p: { name: string })             => Promise<void>
   updateSupplier:      (id: string, p: { name?: string }) => Promise<void>
@@ -243,6 +244,10 @@ export const useDataStore = create<DataState>((set, get) => ({
     set(s => ({ expenses: s.expenses.map(e => e.id === id ? { ...e, status, review_notes: notes, reviewed_by: uid, reviewed_at: new Date().toISOString() } : e) }))
   },
   addDelivery: async (p) => { await apiAddDelivery(p); await get().fetchDeliveries() },
+  authoriseDelivery: async (id) => {
+    await apiAuthoriseDelivery(id)
+    set(s => ({ deliveries: s.deliveries.map(d => d.id === id ? { ...d, authorised_by_office: true } : d) }))
+  },
 
   createSupplier: async (p) => {
     await apiCreateSupplier(p)

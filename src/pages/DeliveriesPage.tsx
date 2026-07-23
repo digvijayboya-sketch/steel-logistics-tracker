@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRole } from '@/hooks/useRole'
-import { DEMO_DELIVERIES, DEMO_JOBS } from '@/lib/demoData'
+import { useAuthStore } from '@/store/appStore'
+import { useDataStore } from '@/store/dataStore'
 import { formatDate } from '@/lib/utils'
-import { Plus, AlertTriangle, ChevronDown, ChevronUp, Truck, CheckCircle2, MapPin } from 'lucide-react'
+import { Plus, AlertTriangle, ChevronDown, ChevronUp, Truck, CheckCircle2, MapPin, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 const PageShell = ({ children }: { children: React.ReactNode }) => (
   <div style={{ minHeight: '100%', padding: '1.5rem 1.75rem', maxWidth: 1100, margin: '0 auto' }}>
@@ -13,17 +15,26 @@ const PageShell = ({ children }: { children: React.ReactNode }) => (
 
 export const DeliveriesPage = () => {
   const navigate = useNavigate()
-  const { isAgent, isPlanner, isAdmin, user } = useRole()
+  const { isAgent, isAdmin, isPlanner } = useRole()
+  const { user } = useAuthStore()
+  const { deliveries, jobs, loading, error, fetchDeliveries, fetchJobs, authoriseDelivery } = useDataStore()
+
+  useEffect(() => { fetchDeliveries(); fetchJobs() }, [])
+
   const [expanded, setExpanded] = useState<string | null>(null)
   const [tab, setTab] = useState<'pending' | 'completed'>('pending')
+  const [authorising, setAuthorising] = useState<string | null>(null)
+
+  const isLoading = loading['deliveries'] || loading['jobs']
+  const canAuthorise = isAdmin || isPlanner
 
   // Jobs ready for delivery (processing_done) — not yet delivered
-  const readyJobs = DEMO_JOBS.filter(j => j.status === 'processing_done')
+  const readyJobs = jobs.filter(j => j.status === 'processing_done')
 
   // Already logged deliveries
   const allDeliveries = isAgent
-    ? DEMO_DELIVERIES.filter(d => { const j = DEMO_JOBS.find(x => x.id === d.job_id); return j?.assigned_agent_id === user?.id })
-    : DEMO_DELIVERIES
+    ? deliveries.filter(d => { const j = jobs.find(x => x.id === d.job_id); return j?.assigned_agent_id === user?.id })
+    : deliveries
 
   const deviations = allDeliveries.filter(d => d.destination_changed && !d.authorised_by_office)
 
@@ -37,6 +48,16 @@ export const DeliveriesPage = () => {
     background: 'transparent', color: active ? 'var(--accent)' : 'var(--tx3)',
     fontWeight: active ? 700 : 500, fontSize: '0.88rem', cursor: 'pointer', transition: 'all 0.15s',
   })
+
+  const handleAuthorise = async (id: string) => {
+    setAuthorising(id)
+    try {
+      await authoriseDelivery(id)
+      toast.success('Reroute authorised')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to authorise')
+    } finally { setAuthorising(null) }
+  }
 
   return (
     <PageShell>
@@ -53,6 +74,19 @@ export const DeliveriesPage = () => {
           <Plus size={14} /> Log Delivery
         </button>
       </div>
+
+      {error && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.7rem 1rem', borderRadius: '0.7rem', marginBottom: '1.1rem', background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.28)' }}>
+          <AlertTriangle size={15} style={{ color: '#f87171', flexShrink: 0 }} />
+          <div style={{ fontSize: '0.84rem', color: 'var(--tx1)' }}>Couldn't load deliveries. <span style={{ color: 'var(--tx2)' }}>{error}</span></div>
+        </div>
+      )}
+
+      {isLoading && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--tx3)', fontSize: '0.82rem', marginBottom: '1rem' }}>
+          <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> Loading live data…
+        </div>
+      )}
 
       {/* Deviation alert */}
       {deviations.length > 0 && (
@@ -85,7 +119,7 @@ export const DeliveriesPage = () => {
       {/* Ready to Deliver tab — jobs with processing_done */}
       {tab === 'pending' && (
         <div>
-          {readyJobs.length === 0 ? (
+          {!isLoading && readyJobs.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '3rem', background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', color: 'var(--tx3)', fontSize: '0.88rem' }}>
               No jobs ready for delivery yet
             </div>
@@ -121,15 +155,16 @@ export const DeliveriesPage = () => {
       {/* Completed deliveries tab */}
       {tab === 'completed' && (
         <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', overflow: 'hidden', boxShadow: 'var(--sh-card)' }}>
-          {allDeliveries.length === 0 ? (
+          {!isLoading && allDeliveries.length === 0 ? (
             <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--tx3)', fontSize: '0.88rem' }}>No deliveries logged yet</div>
           ) : (
             <div>
               {allDeliveries.map(d => {
-                const job = DEMO_JOBS.find(j => j.id === d.job_id)
+                const job = jobs.find(j => j.id === d.job_id)
                 const isOpen = expanded === d.id
                 const sc = statusColor(d.delivery_status)
                 const hasDeviation = d.destination_changed && !d.authorised_by_office
+                const isAuthorising = authorising === d.id
                 return (
                   <div key={d.id} style={{ borderBottom: '1px solid var(--gb)' }}>
                     <div
@@ -163,6 +198,12 @@ export const DeliveriesPage = () => {
                             <div style={{ fontSize: '0.84rem', color: 'var(--tx1)', marginTop: 2 }}>{v}</div>
                           </div>
                         ))}
+                        {d.delivery_status === 'partial' && d.partial_reason && (
+                          <div style={{ gridColumn: '1/-1' }}>
+                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--tx4)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Partial Delivery Reason</div>
+                            <div style={{ fontSize: '0.84rem', color: 'var(--tx1)', marginTop: 2 }}>{d.partial_reason}</div>
+                          </div>
+                        )}
                         {d.destination_changed && (
                           <div style={{ gridColumn: '1/-1', marginTop: '0.5rem', padding: '0.65rem 0.9rem', borderRadius: '0.55rem', background: 'rgba(251,146,60,0.1)', border: '1px solid rgba(251,146,60,0.25)' }}>
                             <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#fb923c', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} /> Destination Changed</div>
@@ -171,7 +212,14 @@ export const DeliveriesPage = () => {
                             <div style={{ fontSize: '0.78rem', color: 'var(--tx3)', marginTop: 2 }}>Reason: {d.change_reason}</div>
                             {!d.authorised_by_office && (
                               <div style={{ marginTop: '0.5rem' }}>
-                                <button style={{ padding: '0.3rem 0.85rem', borderRadius: '0.4rem', border: 'none', background: 'rgba(251,146,60,0.2)', color: '#fb923c', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>Authorise</button>
+                                {canAuthorise ? (
+                                  <button disabled={isAuthorising} onClick={(e) => { e.stopPropagation(); handleAuthorise(d.id) }}
+                                    style={{ padding: '0.3rem 0.85rem', borderRadius: '0.4rem', border: 'none', background: 'rgba(251,146,60,0.2)', color: '#fb923c', fontWeight: 700, fontSize: '0.75rem', cursor: isAuthorising ? 'not-allowed' : 'pointer', opacity: isAuthorising ? 0.6 : 1 }}>
+                                    {isAuthorising ? 'Authorising…' : 'Authorise'}
+                                  </button>
+                                ) : (
+                                  <span style={{ fontSize: '0.74rem', color: 'var(--tx4)' }}>Awaiting admin/planner authorisation</span>
+                                )}
                               </div>
                             )}
                           </div>

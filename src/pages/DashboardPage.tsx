@@ -100,7 +100,7 @@ export const DashboardPage = () => {
           </div>
           <h1 style={{ color: 'var(--tx1)', fontSize: '1.375rem', fontWeight: 800, letterSpacing: '-0.02em', margin: 0 }}>
             Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'},{' '}
-            {user?.full_name?.split(' ')[0] ?? 'there'} 👋
+            {user?.name?.split(' ')[0] ?? 'there'} 👋
           </h1>
           <p style={{ color: 'var(--tx3)', fontSize: '0.82rem', marginTop: '0.25rem' }}>
             {isAgent

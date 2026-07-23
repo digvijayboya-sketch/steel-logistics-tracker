@@ -14,9 +14,10 @@ import {
   Building2, Users, Truck, Factory,
   Plus, Pencil, Trash2, Check, X, Loader2, ShieldCheck, Search,
 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 type Tab = 'suppliers' | 'service_centres' | 'customers' | 'users'
+const TABS: Tab[] = ['suppliers', 'service_centres', 'customers', 'users']
 
 // Exact roles from DB enum: admin | planner | purchase | agent
 const DB_ROLES = ['admin', 'planner', 'purchase', 'agent'] as const
@@ -347,7 +348,9 @@ function UsersPanel() {
 export const MasterDataPage = () => {
   const { isAdmin } = useRole()
   const navigate = useNavigate()
-  const [tab, setTab] = useState<Tab>('suppliers')
+  const [sp] = useSearchParams()
+  const initialTab = sp.get('tab')
+  const [tab, setTab] = useState<Tab>(TABS.includes(initialTab as Tab) ? (initialTab as Tab) : 'suppliers')
 
   const {
     suppliers, serviceCentres, customers, loading, fetchLookups,
