@@ -41,7 +41,7 @@ export interface Job {
   id: string; job_number: string; delivery_destination: string
   service_type: string; packing_type?: string | null
   planned_delivery_date?: string | null; status: JobStatus
-  created_at: string; assigned_agent_id?: string | null
+  created_at: string; updated_at?: string; assigned_agent_id?: string | null
   do?: any; customer?: Customer | null; assigned_agent?: Pick<Profile,'id'|'full_name'|'role'> | null
   queue_updates?: any[]; expenses?: any[]; deliveries?: any[]
 }

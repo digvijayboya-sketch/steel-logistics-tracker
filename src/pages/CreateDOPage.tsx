@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
 import { useDataStore } from '@/store/dataStore'
-import { ArrowLeft, Plus, Trash2, FileText } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Plus, Trash2, FileText, Check, Package } from 'lucide-react'
 import { toast } from 'sonner'
 import type { DeliveryOrderItem } from '@/types'
 
@@ -25,13 +25,16 @@ const lbl: React.CSSProperties = {
   letterSpacing:'0.07em', marginBottom:4,
 }
 
+const STEPS = ['DO Header', 'Coil Items', 'Review & Submit']
+
 export const CreateDOPage = () => {
   const navigate  = useNavigate()
   const { user }  = useAuthStore()
-  const { suppliers, serviceCentres, fetchLookups, createDO } = useDataStore()
+  const { suppliers, serviceCentres, fetchLookups, createDO, updateDOStatus } = useDataStore()
 
   useEffect(() => { fetchLookups() }, [])
 
+  const [step, setStep] = useState<1|2|3>(1)
   const [form, setForm] = useState({
     do_number: DO_PREFIX,
     supplier_id: '',
@@ -56,11 +59,14 @@ export const CreateDOPage = () => {
     </div>
   )
 
-  const validate = () => {
+  const validateHeader = () => {
     if (!form.do_number.trim()) return 'DO Number is required'
     if (!form.supplier_id) return 'Select a supplier'
     if (!form.source_service_centre_id) return 'Select a source service centre'
     if (!form.expected_collection_date) return 'Expected collection date is required'
+    return null
+  }
+  const validateItems = () => {
     if (items.length===0) return 'Add at least one item'
     for (const it of items) {
       if (!it.coil_grade) return 'Coil grade required for all items'
@@ -71,17 +77,26 @@ export const CreateDOPage = () => {
     return null
   }
 
-  const handleSubmit = async (e:React.FormEvent) => {
-    e.preventDefault()
-    const err = validate()
+  const totalMT = items.reduce((s,i)=>s+(i.weight_mt||0),0)
+
+  const goNext = () => {
+    const err = step===1 ? validateHeader() : step===2 ? validateItems() : null
     if (err) { toast.error(err); return }
+    setStep(s => (s < 3 ? (s+1) as 1|2|3 : s))
+  }
+  const goBack = () => setStep(s => (s > 1 ? (s-1) as 1|2|3 : s))
+
+  const handleSubmit = async (activate: boolean) => {
+    const headerErr = validateHeader()
+    const itemsErr = validateItems()
+    if (headerErr || itemsErr) { toast.error(headerErr ?? itemsErr ?? 'Please check the form'); return }
     setSubmitting(true)
     try {
       // Strip any client-side id — Supabase generates UUIDs server-side
       const cleanItems = items.map(({ coil_grade, thickness_mm, width_mm, quantity, weight_mt }) => ({
         coil_grade, thickness_mm, width_mm, quantity, weight_mt,
       }))
-      await createDO({
+      const id = await createDO({
         do_number: form.do_number.trim(),
         supplier_id: form.supplier_id,
         source_service_centre_id: form.source_service_centre_id,
@@ -89,8 +104,9 @@ export const CreateDOPage = () => {
         created_by: user?.id??'',
         items: cleanItems,
       })
-      toast.success(`DO ${form.do_number} created`)
-      navigate('/dos')
+      if (activate) await updateDOStatus(id, 'active', user?.id ?? '')
+      toast.success(`DO ${form.do_number} ${activate ? 'created and activated' : 'saved as draft'}`)
+      navigate(`/dos/${id}`)
     } catch(e:unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to create DO')
     } finally { setSubmitting(false) }
@@ -101,8 +117,14 @@ export const CreateDOPage = () => {
     borderRadius:'0.85rem', padding:'1.25rem', boxShadow:'var(--sh-card)', marginBottom:'1rem',
   }
 
+  const supplierName = suppliers.find(s=>s.id===form.supplier_id)?.name ?? '—'
+  const scLabel = (() => {
+    const sc = serviceCentres.find(s=>s.id===form.source_service_centre_id)
+    return sc ? `${sc.name} – ${sc.city}` : '—'
+  })()
+
   return (
-    <div style={{minHeight:'100%',padding:'1.5rem 1.75rem',maxWidth:720,margin:'0 auto'}}>
+    <div style={{minHeight:'100%',padding:'1.5rem 1.75rem',maxWidth:900,margin:'0 auto'}}>
       <div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:'1.5rem'}}>
         <button onClick={()=>navigate('/dos')} style={{width:34,height:34,borderRadius:'0.5rem',border:'1px solid var(--gb)',background:'var(--g2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'var(--tx3)'}}>
           <ArrowLeft size={15}/>
@@ -113,85 +135,189 @@ export const CreateDOPage = () => {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit}>
-        <div style={card}>
-          <div style={{display:'flex',alignItems:'center',gap:'0.4rem',marginBottom:'1rem'}}>
-            <FileText size={14} style={{color:'var(--accent)'}}/>
-            <span style={{fontWeight:700,fontSize:'0.88rem',color:'var(--tx1)'}}>DO Header</span>
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem'}}>
-            <div style={{gridColumn:'1/-1'}}>
-              <label style={lbl}>DO Number *</label>
-              <input style={inp} value={form.do_number} onChange={e=>setField('do_number',e.target.value)} placeholder="DO-2026-XXX"/>
-            </div>
-            <div>
-              <label style={lbl}>Supplier *</label>
-              <select style={inp} value={form.supplier_id} onChange={e=>setField('supplier_id',e.target.value)}>
-                <option value="">Select supplier…</option>
-                {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={lbl}>Source Service Centre *</label>
-              <select style={inp} value={form.source_service_centre_id} onChange={e=>setField('source_service_centre_id',e.target.value)}>
-                <option value="">Select SC…</option>
-                {serviceCentres.map(sc=><option key={sc.id} value={sc.id}>{sc.name} – {sc.city}</option>)}
-              </select>
-            </div>
-            <div style={{gridColumn:'1/-1'}}>
-              <label style={lbl}>Expected Collection Date *</label>
-              <input style={inp} type="date" value={form.expected_collection_date} onChange={e=>setField('expected_collection_date',e.target.value)}/>
-            </div>
-          </div>
-        </div>
-
-        <div style={card}>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'1rem'}}>
-            <span style={{fontWeight:700,fontSize:'0.88rem',color:'var(--tx1)'}}>Coil Items ({items.length})</span>
-            <button type="button" onClick={addItem} style={{display:'flex',alignItems:'center',gap:'0.3rem',padding:'0.35rem 0.75rem',borderRadius:'0.45rem',border:'none',background:'var(--accent-dim)',color:'var(--accent)',fontWeight:700,fontSize:'0.78rem',cursor:'pointer'}}>
-              <Plus size={12}/> Add Item
-            </button>
-          </div>
-          <div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>
-            {items.map((it,i)=>(
-              <div key={i} style={{padding:'0.85rem',borderRadius:'0.65rem',border:'1px solid var(--gb)',background:'var(--g1)'}}>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.65rem'}}>
-                  <span style={{fontSize:'0.75rem',fontWeight:700,color:'var(--tx3)'}}>Item {i+1}</span>
-                  {items.length>1&&(
-                    <button type="button" onClick={()=>removeItem(i)} style={{width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:'0.35rem',border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.1)',color:'#f87171',cursor:'pointer'}}>
-                      <Trash2 size={11}/>
-                    </button>
-                  )}
+      {/* Step indicator */}
+      <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:'1.5rem'}}>
+        {STEPS.map((label, idx) => {
+          const n = (idx+1) as 1|2|3
+          const active = step === n
+          const done = step > n
+          return (
+            <div key={label} style={{display:'flex',alignItems:'center',gap:'0.5rem',flex: idx < STEPS.length-1 ? 1 : undefined}}>
+              <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
+                <div style={{
+                  width:26,height:26,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',
+                  fontSize:'0.72rem',fontWeight:800,flexShrink:0,
+                  background: done ? 'var(--accent)' : active ? 'var(--accent-dim)' : 'var(--g2)',
+                  color: done ? '#07211e' : active ? 'var(--accent)' : 'var(--tx4)',
+                  border: active ? '1px solid var(--accent)' : '1px solid var(--gb)',
+                }}>
+                  {done ? <Check size={13}/> : n}
                 </div>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem'}}>
-                  <div style={{gridColumn:'1/-1'}}>
-                    <label style={lbl}>Coil Grade *</label>
-                    <select style={inp} value={it.coil_grade} onChange={e=>setItem(i,'coil_grade',e.target.value)}>
-                      <option value="">Select grade…</option>
-                      {COIL_GRADES.map(g=><option key={g} value={g}>{g}</option>)}
-                    </select>
-                  </div>
-                  {([['Thickness (mm)','thickness_mm','0.1'],['Width (mm)','width_mm','1'],['Quantity','quantity','1'],['Weight (MT)','weight_mt','0.1']] as [string,string,string][]).map(([label,key,step])=>(
-                    <div key={key}>
-                      <label style={lbl}>{label} *</label>
-                      <input style={inp} type="number" step={step} min="0"
-                        value={(it as Record<string,unknown>)[key] as number}
-                        onChange={e=>setItem(i,key,parseFloat(e.target.value)||0)}/>
-                    </div>
-                  ))}
+                <span style={{fontSize:'0.78rem',fontWeight:700,color: active||done ? 'var(--tx1)' : 'var(--tx4)',whiteSpace:'nowrap'}}>{label}</span>
+              </div>
+              {idx < STEPS.length-1 && <div style={{flex:1,height:1,background: step>n ? 'var(--accent)' : 'var(--gb)'}}/>}
+            </div>
+          )
+        })}
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns: step===2 ? '1fr 220px' : '1fr',gap:'1rem',alignItems:'start'}}>
+        <div>
+          {step===1 && (
+            <div style={card}>
+              <div style={{display:'flex',alignItems:'center',gap:'0.4rem',marginBottom:'1rem'}}>
+                <FileText size={14} style={{color:'var(--accent)'}}/>
+                <span style={{fontWeight:700,fontSize:'0.88rem',color:'var(--tx1)'}}>DO Header</span>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem'}}>
+                <div style={{gridColumn:'1/-1'}}>
+                  <label style={lbl}>DO Number *</label>
+                  <input style={inp} value={form.do_number} onChange={e=>setField('do_number',e.target.value)} placeholder="DO-2026-XXX"/>
+                </div>
+                <div>
+                  <label style={lbl}>Supplier *</label>
+                  <select style={inp} value={form.supplier_id} onChange={e=>setField('supplier_id',e.target.value)}>
+                    <option value="">Select supplier…</option>
+                    {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>Source Service Centre *</label>
+                  <select style={inp} value={form.source_service_centre_id} onChange={e=>setField('source_service_centre_id',e.target.value)}>
+                    <option value="">Select SC…</option>
+                    {serviceCentres.map(sc=><option key={sc.id} value={sc.id}>{sc.name} – {sc.city}</option>)}
+                  </select>
+                </div>
+                <div style={{gridColumn:'1/-1'}}>
+                  <label style={lbl}>Expected Collection Date *</label>
+                  <input style={inp} type="date" value={form.expected_collection_date} onChange={e=>setField('expected_collection_date',e.target.value)}/>
                 </div>
               </div>
-            ))}
+            </div>
+          )}
+
+          {step===2 && (
+            <div style={card}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'1rem'}}>
+                <span style={{fontWeight:700,fontSize:'0.88rem',color:'var(--tx1)'}}>Coil Items ({items.length})</span>
+                <button type="button" onClick={addItem} style={{display:'flex',alignItems:'center',gap:'0.3rem',padding:'0.35rem 0.75rem',borderRadius:'0.45rem',border:'none',background:'var(--accent-dim)',color:'var(--accent)',fontWeight:700,fontSize:'0.78rem',cursor:'pointer'}}>
+                  <Plus size={12}/> Add Item
+                </button>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>
+                {items.map((it,i)=>(
+                  <div key={i} style={{padding:'0.85rem',borderRadius:'0.65rem',border:'1px solid var(--gb)',background:'var(--g1)'}}>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.65rem'}}>
+                      <span style={{fontSize:'0.75rem',fontWeight:700,color:'var(--tx3)'}}>Item {i+1}</span>
+                      {items.length>1&&(
+                        <button type="button" onClick={()=>removeItem(i)} style={{width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:'0.35rem',border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.1)',color:'#f87171',cursor:'pointer'}}>
+                          <Trash2 size={11}/>
+                        </button>
+                      )}
+                    </div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem'}}>
+                      <div style={{gridColumn:'1/-1'}}>
+                        <label style={lbl}>Coil Grade *</label>
+                        <select style={inp} value={it.coil_grade} onChange={e=>setItem(i,'coil_grade',e.target.value)}>
+                          <option value="">Select grade…</option>
+                          {COIL_GRADES.map(g=><option key={g} value={g}>{g}</option>)}
+                        </select>
+                      </div>
+                      {([['Thickness (mm)','thickness_mm','0.1'],['Width (mm)','width_mm','1'],['Quantity','quantity','1'],['Weight (MT)','weight_mt','0.1']] as [string,string,string][]).map(([label,key,step])=>(
+                        <div key={key}>
+                          <label style={lbl}>{label} *</label>
+                          <input style={inp} type="number" step={step} min="0"
+                            value={(it as Record<string,unknown>)[key] as number}
+                            onChange={e=>setItem(i,key,parseFloat(e.target.value)||0)}/>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {step===3 && (
+            <div style={card}>
+              <div style={{display:'flex',alignItems:'center',gap:'0.4rem',marginBottom:'1rem'}}>
+                <Check size={14} style={{color:'var(--accent)'}}/>
+                <span style={{fontWeight:700,fontSize:'0.88rem',color:'var(--tx1)'}}>Review</span>
+              </div>
+
+              <div style={{marginBottom:'1.25rem'}}>
+                <div style={{fontSize:'0.72rem',fontWeight:700,color:'var(--tx4)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'0.5rem'}}>DO Header</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.6rem',fontSize:'0.84rem'}}>
+                  <div><span style={{color:'var(--tx4)'}}>DO Number: </span><span style={{color:'var(--tx1)',fontWeight:600}}>{form.do_number}</span></div>
+                  <div><span style={{color:'var(--tx4)'}}>Expected Collection: </span><span style={{color:'var(--tx1)',fontWeight:600}}>{form.expected_collection_date}</span></div>
+                  <div><span style={{color:'var(--tx4)'}}>Supplier: </span><span style={{color:'var(--tx1)',fontWeight:600}}>{supplierName}</span></div>
+                  <div><span style={{color:'var(--tx4)'}}>Source SC: </span><span style={{color:'var(--tx1)',fontWeight:600}}>{scLabel}</span></div>
+                </div>
+              </div>
+
+              <div>
+                <div style={{fontSize:'0.72rem',fontWeight:700,color:'var(--tx4)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'0.5rem'}}>Coil Items ({items.length})</div>
+                <div style={{overflowX:'auto'}}>
+                  <table className="st-table">
+                    <thead><tr><th>Grade</th><th>Thickness</th><th>Width</th><th>Qty</th><th>Weight (MT)</th></tr></thead>
+                    <tbody>
+                      {items.map((it,i)=>(
+                        <tr key={i}>
+                          <td>{it.coil_grade || '—'}</td>
+                          <td>{it.thickness_mm} mm</td>
+                          <td>{it.width_mm} mm</td>
+                          <td>{it.quantity}</td>
+                          <td>{it.weight_mt.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Footer actions */}
+          <div style={{display:'flex',gap:'0.75rem',paddingBottom:'2rem'}}>
+            {step===1 && (
+              <button type="button" onClick={()=>navigate('/dos')} style={{flex:1,padding:'0.7rem',borderRadius:'0.6rem',border:'1px solid var(--gb)',background:'var(--g2)',color:'var(--tx2)',fontWeight:600,fontSize:'0.88rem',cursor:'pointer'}}>Cancel</button>
+            )}
+            {step>1 && (
+              <button type="button" onClick={goBack} style={{flex:1,padding:'0.7rem',borderRadius:'0.6rem',border:'1px solid var(--gb)',background:'var(--g2)',color:'var(--tx2)',fontWeight:600,fontSize:'0.88rem',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem'}}>
+                <ArrowLeft size={14}/> Back
+              </button>
+            )}
+            {step<3 && (
+              <button type="button" onClick={goNext} style={{flex:1,padding:'0.7rem',borderRadius:'0.6rem',border:'none',background:'linear-gradient(135deg,#2dd4bf,#0d9488)',color:'#07211e',fontWeight:700,fontSize:'0.88rem',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem'}}>
+                Next <ArrowRight size={14}/>
+              </button>
+            )}
+            {step===3 && (
+              <>
+                <button type="button" disabled={submitting} onClick={()=>handleSubmit(false)} style={{flex:1,padding:'0.7rem',borderRadius:'0.6rem',border:'1px solid var(--accent)',background:'var(--accent-dim)',color:'var(--accent)',fontWeight:700,fontSize:'0.88rem',cursor:'pointer',opacity:submitting?0.65:1}}>
+                  {submitting?'Saving…':'Save as Draft'}
+                </button>
+                <button type="button" disabled={submitting} onClick={()=>handleSubmit(true)} style={{flex:1,padding:'0.7rem',borderRadius:'0.6rem',border:'none',background:'linear-gradient(135deg,#2dd4bf,#0d9488)',color:'#07211e',fontWeight:700,fontSize:'0.88rem',cursor:'pointer',opacity:submitting?0.65:1}}>
+                  {submitting?'Activating…':'Activate'}
+                </button>
+              </>
+            )}
           </div>
         </div>
 
-        <div style={{display:'flex',gap:'0.75rem',paddingBottom:'2rem'}}>
-          <button type="button" onClick={()=>navigate('/dos')} style={{flex:1,padding:'0.7rem',borderRadius:'0.6rem',border:'1px solid var(--gb)',background:'var(--g2)',color:'var(--tx2)',fontWeight:600,fontSize:'0.88rem',cursor:'pointer'}}>Cancel</button>
-          <button type="submit" disabled={submitting} style={{flex:1,padding:'0.7rem',borderRadius:'0.6rem',border:'none',background:'linear-gradient(135deg,#2dd4bf,#0d9488)',color:'#07211e',fontWeight:700,fontSize:'0.88rem',cursor:'pointer',opacity:submitting?0.65:1}}>
-            {submitting?'Creating…':'Create DO'}
-          </button>
-        </div>
-      </form>
+        {/* Live sidebar — running total, only during item entry */}
+        {step===2 && (
+          <div style={{...card,position:'sticky',top:'1rem'}}>
+            <div style={{display:'flex',alignItems:'center',gap:'0.4rem',marginBottom:'0.85rem'}}>
+              <Package size={14} style={{color:'var(--accent)'}}/>
+              <span style={{fontWeight:700,fontSize:'0.82rem',color:'var(--tx1)'}}>Running Total</span>
+            </div>
+            <div style={{fontSize:'1.9rem',fontWeight:800,color:'var(--accent)',lineHeight:1}}>{totalMT.toFixed(2)}</div>
+            <div style={{fontSize:'0.72rem',color:'var(--tx4)',marginTop:2,marginBottom:'0.85rem'}}>Total MT</div>
+            <div style={{fontSize:'0.82rem',color:'var(--tx2)'}}>{items.length} item{items.length!==1?'s':''}</div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

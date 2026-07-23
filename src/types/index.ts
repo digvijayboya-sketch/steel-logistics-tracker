@@ -49,6 +49,7 @@ export interface Job {
   planned_delivery_date?:string
   status:JobStatus
   created_at:string
+  updated_at?:string
   do?:DeliveryOrder
   customer?:Customer
   assigned_agent?:Profile

@@ -12,7 +12,7 @@ import type { DOStatus, JobStatus } from '@/types'
 import { formatDate } from '@/lib/utils'
 import {
   ClipboardList, ChevronLeft, Package, User, ChevronRight,
-  CheckCircle2, XCircle, Trash2, AlertTriangle, Loader2,
+  XCircle, Trash2, AlertTriangle, Loader2,
 } from 'lucide-react'
 
 const DO_COLORS: Record<DOStatus, string> = {
@@ -77,12 +77,6 @@ export const DODetailPage = () => {
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState('')
 
-  // plan job form
-  const [planning, setPlanning] = useState(false)
-  const [agents, setAgents] = useState<any[]>([])
-  const [form, setForm] = useState({ agentId: '', destination: '', serviceType: 'slitting', plannedDate: '', instructions: '' })
-  const [saved, setSaved] = useState(false)
-
   // ── fetch
   const fetchData = async () => {
     setLoading(true)
@@ -102,10 +96,6 @@ export const DODetailPage = () => {
       .select(`id, job_number, status, delivery_destination, assigned_agent:profiles(id,full_name)`)
       .eq('do_id', id)
     setLinkedJobs(jobRows ?? [])
-
-    const { data: agentRows } = await supabase
-      .from('profiles').select('id, full_name').in('role', ['agent']).order('full_name')
-    setAgents(agentRows ?? [])
     setLoading(false)
   }
 
@@ -147,22 +137,6 @@ export const DODetailPage = () => {
     }
   }
 
-  // ── Save job plan
-  const handleSavePlan = async () => {
-    if (!form.agentId || !form.destination) return
-    const jobNum = `JOB-${Date.now().toString().slice(-6)}`
-    const { error } = await supabase.from('jobs').insert({
-      job_number: jobNum, do_id: id, customer_id: null,
-      delivery_destination: form.destination,
-      service_type: form.serviceType,
-      assigned_agent_id: form.agentId,
-      planned_delivery_date: form.plannedDate || null,
-      processing_instructions: form.instructions,
-      status: 'assigned',
-    })
-    if (!error) { setSaved(true); setPlanning(false); await fetchData() }
-  }
-
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '50vh', gap: '0.5rem', color: 'var(--tx3)', fontSize: '0.85rem' }}>
       <Loader2 size={16} style={{ animation: 'spin 0.8s linear infinite' }} /> Loading DO…
@@ -181,12 +155,6 @@ export const DODetailPage = () => {
   const canPlan     = (isPlanner || isAdmin) && !hasJob && !isDraft && !isCancelled
   const canCancel   = (isPlanner || isAdmin) && !isCancelled && !['fully_dispatched','closed'].includes(doItem.status)
   const canDelete   = isAdmin && isDraft
-
-  const inp = (extra?: React.CSSProperties): React.CSSProperties => ({
-    width: '100%', padding: '0.5rem 0.75rem', borderRadius: '0.5rem',
-    border: '1px solid var(--input-border)', background: 'var(--input-bg)',
-    color: 'var(--tx1)', fontSize: '0.84rem', outline: 'none', ...extra,
-  })
 
   return (
     <div style={{ minHeight: '100%', padding: '1.5rem 1.75rem', maxWidth: 1100, margin: '0 auto' }}>
@@ -231,8 +199,8 @@ export const DODetailPage = () => {
           </span>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {canPlan && !planning && (
-            <button onClick={() => setPlanning(true)}
+          {canPlan && (
+            <button onClick={() => navigate(`/planning?do=${id}`)}
               style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1.1rem', borderRadius: '0.6rem', border: 'none', background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', color: '#fff', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer', boxShadow: '0 4px 14px rgba(124,58,237,0.3)' }}>
               <ClipboardList size={14} /> Plan Job
             </button>
@@ -297,58 +265,6 @@ export const DODetailPage = () => {
 
         {/* Right column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* Plan job form */}
-          {planning && (
-            <div style={{ background: 'var(--card-bg)', border: '2px solid rgba(167,139,250,0.4)', borderRadius: '0.85rem', padding: '1.25rem', boxShadow: '0 4px 24px rgba(124,58,237,0.15)' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--tx1)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <ClipboardList size={15} style={{ color: '#a78bfa' }} /> Plan & Assign Job
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <div>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--tx4)', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: 4 }}>Assign Agent</label>
-                  <select value={form.agentId} onChange={e => setForm(f => ({ ...f, agentId: e.target.value }))} style={inp()}>
-                    <option value="">Select agent…</option>
-                    {agents.map((a: any) => <option key={a.id} value={a.id}>{a.full_name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--tx4)', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: 4 }}>Delivery Destination</label>
-                  <input value={form.destination} onChange={e => setForm(f => ({ ...f, destination: e.target.value }))} placeholder="City / address" style={inp()} />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                  <div>
-                    <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--tx4)', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: 4 }}>Service Type</label>
-                    <select value={form.serviceType} onChange={e => setForm(f => ({ ...f, serviceType: e.target.value }))} style={inp()}>
-                      <option value="ctl">Cut-to-Length</option>
-                      <option value="slitting">Slitting</option>
-                      <option value="packing_only">Packing Only</option>
-                      <option value="coil_to_coil">Coil-to-Coil</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--tx4)', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: 4 }}>Planned Delivery</label>
-                    <input type="date" value={form.plannedDate} onChange={e => setForm(f => ({ ...f, plannedDate: e.target.value }))} style={inp()} />
-                  </div>
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--tx4)', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: 4 }}>Processing Instructions</label>
-                  <textarea value={form.instructions} onChange={e => setForm(f => ({ ...f, instructions: e.target.value }))} placeholder="Cut sizes, tolerances, special notes…" rows={3} style={inp({ resize: 'vertical' })} />
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
-                  <button onClick={() => setPlanning(false)} style={{ padding: '0.45rem 1rem', borderRadius: '0.5rem', border: '1px solid var(--gb)', background: 'var(--g2)', color: 'var(--tx2)', fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer' }}>Discard</button>
-                  <button onClick={handleSavePlan} style={{ padding: '0.45rem 1.1rem', borderRadius: '0.5rem', border: 'none', background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>Save Job</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {saved && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.7rem 1rem', borderRadius: '0.65rem', background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.3)' }}>
-              <CheckCircle2 size={15} style={{ color: '#34d399' }} />
-              <span style={{ fontSize: '0.84rem', color: 'var(--tx1)', fontWeight: 600 }}>Job created and agent assigned successfully.</span>
-            </div>
-          )}
-
           {/* Linked jobs */}
           <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', overflow: 'hidden', boxShadow: 'var(--sh-card)' }}>
             <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--gb)', fontWeight: 700, fontSize: '0.88rem', color: 'var(--tx1)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>

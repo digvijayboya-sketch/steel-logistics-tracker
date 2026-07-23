@@ -7,6 +7,7 @@ import { DashboardPage } from '@/pages/DashboardPage'
 import { DOListPage } from '@/pages/DOListPage'
 import { DODetailPage } from '@/pages/DODetailPage'
 import { CreateDOPage } from '@/pages/CreateDOPage'
+import { PlanningWorkbenchPage } from '@/pages/PlanningWorkbenchPage'
 import { JobsListPage } from '@/pages/JobsListPage'
 import { JobDetailPage } from '@/pages/JobDetailPage'
 import { CreateJobPage } from '@/pages/CreateJobPage'
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="dos"            element={<DOListPage />} />
           <Route path="dos/new"        element={<CreateDOPage />} />
           <Route path="dos/:id"        element={<DODetailPage />} />
+          <Route path="planning"       element={<PlanningWorkbenchPage />} />
           <Route path="jobs"           element={<JobsListPage />} />
           <Route path="jobs/new"       element={<CreateJobPage />} />
           <Route path="jobs/:id"       element={<JobDetailPage />} />

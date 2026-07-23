@@ -176,7 +176,7 @@ export const apiGetJobs = async () => {
   const { data, error } = await supabase
     .from('jobs')
     .select(`id, job_number, delivery_destination, service_type, packing_type,
-      planned_delivery_date, status, created_at,
+      planned_delivery_date, status, created_at, updated_at,
       do:delivery_orders(id,do_number,source_service_centre:service_centres(id,name,city)),
       customer:customers(id,name,city),
       assigned_agent:profiles(id,full_name,role)`)
