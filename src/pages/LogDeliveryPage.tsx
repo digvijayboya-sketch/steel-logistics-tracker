@@ -1,11 +1,33 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
 import { useDataStore } from '@/store/dataStore'
-import { ArrowLeft, Camera, MapPin, Truck, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Camera, MapPin, Truck, AlertTriangle, CheckCircle2, X, Loader2, Save, RefreshCw, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
-import { getCoords } from '@/lib/utils'
+import { getCoords, photoToDataURL, dataURLToFile } from '@/lib/utils'
+import { apiUploadPhoto } from '@/lib/api'
 import type { DeliveryStatus } from '@/types'
+
+const LS_PREFIX = 'pending_delivery_'
+
+type PendingDelivery = {
+  job_id: string
+  logged_as: string
+  vehicle_number: string
+  delivery_address: string
+  delivery_status: DeliveryStatus
+  partial_reason: string
+  destination_changed: boolean
+  change_reason: string
+  authorised_by_office: boolean
+  planned_destination?: string
+  customer_name: string
+  photo_dataurl: string
+  gps_lat?: number
+  gps_lng?: number
+}
+
+type SyncResult = { key: string; ok: boolean; message: string }
 
 const inp: React.CSSProperties = {
   width:'100%', padding:'0.55rem 0.75rem', borderRadius:'0.55rem',
@@ -19,8 +41,9 @@ const lbl: React.CSSProperties = {
 
 export const LogDeliveryPage = () => {
   const navigate = useNavigate()
+  const [sp] = useSearchParams()
   const { user } = useAuthStore()
-  const { jobs, profiles, fetchJobs, fetchLookups, addDelivery } = useDataStore()
+  const { jobs, profiles, fetchJobs, fetchLookups, fetchJob, addDelivery, updateDOStatus } = useDataStore()
 
   useEffect(()=>{ fetchJobs(); fetchLookups() },[])
 
@@ -29,61 +52,197 @@ export const LogDeliveryPage = () => {
   const myJobs     = isAdmin ? activeJobs : activeJobs.filter(j=>j.assigned_agent_id===user?.id)
 
   const [form, setForm] = useState({
-    job_id: '',
+    job_id: sp.get('job') ?? '',
     logged_as: user?.id??'',
     vehicle_number: '',
     delivery_address: '',
     delivery_status: 'delivered' as DeliveryStatus,
+    partial_reason: '',
     destination_changed: false,
     change_reason: '',
     authorised_by_office: false,
   })
   const [gpsStatus, setGpsStatus]   = useState<'idle'|'fetching'|'got'|'error'>('idle')
   const [coords, setCoords]         = useState<{lat?:number;lng?:number}>({})
-  const [photoLabel, setPhotoLabel] = useState('')
+  const [photoFile, setPhotoFile]   = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [loadingLines, setLoadingLines] = useState(false)
+  const [savingLocal, setSavingLocal] = useState(false)
+  const [pendingCount, setPendingCount] = useState(0)
+  const [syncing, setSyncing] = useState(false)
+  const [syncResults, setSyncResults] = useState<SyncResult[] | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const setField = (k:string,v:string|boolean)=>setForm(f=>({...f,[k]:v}))
+
+  const refreshPendingCount = () => {
+    setPendingCount(Object.keys(localStorage).filter(k => k.startsWith(LS_PREFIX)).length)
+  }
+  useEffect(() => { refreshPendingCount() }, [])
   const selectedJob = jobs.find(j=>j.id===form.job_id)
+  const doLines = (selectedJob?.do as any)?.items as Array<{ id:string; coil_grade:string; thickness_mm:number; width_mm:number; quantity:number; weight_mt:number }> | undefined
+
+  // The jobs list doesn't carry full DO line items — fetch full job detail once selected
+  useEffect(() => {
+    if (!form.job_id) return
+    setLoadingLines(true)
+    fetchJob(form.job_id).finally(() => setLoadingLines(false))
+  }, [form.job_id])
+
+  // Pre-fill delivery address from the job's planned destination once selected
+  useEffect(() => {
+    if (selectedJob && !form.delivery_address) {
+      setField('delivery_address', selectedJob.delivery_destination)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedJob?.id])
 
   const fetchGPS = async () => {
     setGpsStatus('fetching')
     const c = await getCoords()
     if (c.lat) { setCoords(c); setGpsStatus('got') } else setGpsStatus('error')
   }
+  useEffect(() => { fetchGPS() }, [])
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setPhotoFile(file)
+    setPhotoPreview(URL.createObjectURL(file))
+  }
+  const clearPhoto = () => {
+    setPhotoFile(null)
+    setPhotoPreview('')
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const validate = () => {
+    if (!form.job_id) return 'Select a job'
+    if (!form.vehicle_number.trim()) return 'Vehicle number required'
+    if (!form.delivery_address.trim()) return 'Delivery address required'
+    if (form.delivery_status==='partial' && !form.partial_reason.trim()) return 'Enter a reason for the partial delivery'
+    if (form.destination_changed && !form.change_reason.trim()) return 'Enter reason for destination change'
+    return null
+  }
+
+  const submitDelivery = async (p: PendingDelivery) => {
+    const ext = p.photo_dataurl.match(/^data:image\/(\w+);/)?.[1] || 'jpg'
+    const photoFile = dataURLToFile(p.photo_dataurl, `proof.${ext}`)
+    const path = `${p.logged_as}/${p.job_id}/${Date.now()}.${ext}`
+    const photoUrl = await apiUploadPhoto('delivery-proofs', path, photoFile)
+
+    await addDelivery({
+      job_id: p.job_id,
+      customer_name: p.customer_name,
+      delivery_address: p.delivery_address.trim(),
+      vehicle_number: p.vehicle_number.trim().toUpperCase(),
+      delivered_at: new Date().toISOString(),
+      delivery_status: p.delivery_status,
+      unloaded_photo_url: photoUrl,
+      final_lat: p.gps_lat,
+      final_lng: p.gps_lng,
+      destination_changed: p.destination_changed,
+      old_destination: p.destination_changed ? p.planned_destination : undefined,
+      new_destination: p.destination_changed ? p.delivery_address.trim() : undefined,
+      change_reason: p.destination_changed ? p.change_reason.trim() : undefined,
+      partial_reason: p.delivery_status === 'partial' ? p.partial_reason.trim() : undefined,
+      authorised_by_office: p.destination_changed ? p.authorised_by_office : undefined,
+      created_by: p.logged_as,
+    })
+
+    // If this was a full delivery and every job on the linked DO is now terminal, close out the DO
+    const job = jobs.find(j => j.id === p.job_id)
+    const doId = job?.do?.id
+    if (p.delivery_status === 'delivered' && doId) {
+      const siblingJobs = jobs.filter(j => j.do?.id === doId)
+      const allTerminal = siblingJobs.every(j => j.id === p.job_id || ['delivered','cancelled'].includes(j.status))
+      if (allTerminal) {
+        await updateDOStatus(doId, 'fully_dispatched', p.logged_as).catch(() => {})
+      }
+    }
+  }
+
+  const buildPayload = async (): Promise<PendingDelivery | null> => {
+    if (!photoFile) { toast.error('Unload photo proof is required'); return null }
+    const photo_dataurl = await photoToDataURL(photoFile)
+    return {
+      job_id: form.job_id,
+      logged_as: isAdmin&&form.logged_as ? form.logged_as : (user?.id ?? ''),
+      vehicle_number: form.vehicle_number,
+      delivery_address: form.delivery_address,
+      delivery_status: form.delivery_status,
+      partial_reason: form.partial_reason,
+      destination_changed: form.destination_changed,
+      change_reason: form.change_reason,
+      authorised_by_office: form.authorised_by_office,
+      planned_destination: selectedJob?.delivery_destination,
+      customer_name: selectedJob?.customer?.name ?? selectedJob?.delivery_destination ?? '',
+      photo_dataurl,
+      gps_lat: coords.lat,
+      gps_lng: coords.lng,
+    }
+  }
 
   const handleSubmit = async (e:React.FormEvent) => {
     e.preventDefault()
-    if (!form.job_id) { toast.error('Select a job'); return }
-    if (!form.vehicle_number.trim()) { toast.error('Vehicle number required'); return }
-    if (!form.delivery_address.trim()) { toast.error('Delivery address required'); return }
-    if (form.destination_changed&&!form.change_reason.trim()) { toast.error('Enter reason for destination change'); return }
+    const err = validate()
+    if (err) { toast.error(err); return }
     setSubmitting(true)
     try {
-      const loggedById = isAdmin&&form.logged_as ? form.logged_as : user?.id??''
-      await addDelivery({
-        job_id: form.job_id,
-        customer_name: selectedJob?.customer?.name??selectedJob?.delivery_destination??'',
-        delivery_address: form.delivery_address.trim(),
-        vehicle_number: form.vehicle_number.trim().toUpperCase(),
-        delivered_at: new Date().toISOString(),
-        delivery_status: form.delivery_status,
-        unloaded_photo_url: photoLabel||undefined,
-        final_lat: coords.lat,
-        final_lng: coords.lng,
-        destination_changed: form.destination_changed,
-        old_destination: form.destination_changed ? selectedJob?.delivery_destination : undefined,
-        new_destination: form.destination_changed ? form.delivery_address.trim() : undefined,
-        change_reason: form.destination_changed ? form.change_reason.trim() : undefined,
-        authorised_by_office: form.destination_changed ? form.authorised_by_office : undefined,
-        created_by: loggedById,
-        created_at: new Date().toISOString(),
-      } as any)
+      const payload = await buildPayload()
+      if (!payload) { setSubmitting(false); return }
+      await submitDelivery(payload)
       toast.success('Delivery logged successfully')
       navigate('/deliveries')
-    } catch(e:any) {
-      toast.error(e.message??'Failed')
+    } catch(e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to log delivery')
     } finally { setSubmitting(false) }
+  }
+
+  const handleSaveLocally = async () => {
+    const err = validate()
+    if (err) { toast.error(err); return }
+    setSavingLocal(true)
+    try {
+      const payload = await buildPayload()
+      if (!payload) return
+      if (payload.photo_dataurl.length > 1_800_000) {
+        toast.error('Photo too large to save offline — try again when back online')
+        return
+      }
+      localStorage.setItem(`${LS_PREFIX}${Date.now()}`, JSON.stringify(payload))
+      toast.success('Saved locally — sync when back online')
+      refreshPendingCount()
+      navigate('/deliveries')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save locally')
+    } finally { setSavingLocal(false) }
+  }
+
+  const handleSyncNow = async () => {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith(LS_PREFIX))
+    if (keys.length === 0) { toast.info('Nothing pending to sync'); return }
+    setSyncing(true)
+    const results: SyncResult[] = []
+    for (const key of keys) {
+      const raw = localStorage.getItem(key)
+      if (!raw) continue
+      try {
+        const payload = JSON.parse(raw) as PendingDelivery
+        await submitDelivery(payload)
+        localStorage.removeItem(key)
+        results.push({ key, ok: true, message: 'Synced' })
+      } catch (e: unknown) {
+        results.push({ key, ok: false, message: e instanceof Error ? e.message : 'Failed' })
+      }
+    }
+    setSyncResults(results)
+    refreshPendingCount()
+    setSyncing(false)
+    const failed = results.filter(r => !r.ok).length
+    if (failed === 0) toast.success(`Synced ${results.length} pending deliver${results.length > 1 ? 'ies' : 'y'}`)
+    else toast.error(`${failed} of ${results.length} failed to sync`)
   }
 
   const card: React.CSSProperties = {
@@ -104,6 +263,28 @@ export const LogDeliveryPage = () => {
         </div>
       </div>
 
+      {pendingCount > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.7rem 1rem', borderRadius: '0.7rem', marginBottom: '1rem', background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.28)' }}>
+          <div style={{ fontSize: '0.84rem', color: 'var(--tx1)', flex: 1 }}>
+            <span style={{ fontWeight: 700 }}>{pendingCount} deliver{pendingCount > 1 ? 'ies' : 'y'}</span>
+            <span style={{ color: 'var(--tx2)' }}> saved locally, not yet synced</span>
+          </div>
+          <button type="button" onClick={handleSyncNow} disabled={syncing}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.85rem', borderRadius: '0.5rem', border: 'none', background: '#fbbf24', color: '#1c1400', fontWeight: 700, fontSize: '0.78rem', cursor: syncing ? 'not-allowed' : 'pointer', opacity: syncing ? 0.65 : 1 }}>
+            <RefreshCw size={13} style={syncing ? { animation: 'spin 0.8s linear infinite' } : undefined} /> {syncing ? 'Syncing…' : 'Sync Now'}
+          </button>
+        </div>
+      )}
+      {syncResults && (
+        <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+          {syncResults.map(r => (
+            <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', fontSize: '0.78rem', background: r.ok ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)', border: `1px solid ${r.ok ? 'rgba(52,211,153,0.3)' : 'rgba(248,113,113,0.3)'}`, color: r.ok ? '#34d399' : '#f87171' }}>
+              {r.ok ? <CheckCircle2 size={13} /> : <XCircle size={13} />} {r.message}
+            </div>
+          ))}
+        </div>
+      )}
+
       <form onSubmit={handleSubmit}>
         <div style={card}>
           <div style={{display:'flex',alignItems:'center',gap:'0.4rem',marginBottom:'1rem'}}>
@@ -118,12 +299,50 @@ export const LogDeliveryPage = () => {
                 {myJobs.map(j=><option key={j.id} value={j.id}>{j.job_number} — {j.delivery_destination}</option>)}
               </select>
             </div>
+
+            {/* Customer + address confirmation */}
             {selectedJob&&(
-              <div style={{padding:'0.6rem 0.75rem',borderRadius:'0.5rem',background:'var(--accent-dim)',border:'1px solid rgba(45,212,191,0.2)',fontSize:'0.78rem'}}>
-                <div style={{color:'var(--tx2)'}}><span style={{fontWeight:700,color:'var(--accent)'}}>Planned dest:</span> {selectedJob.delivery_destination}</div>
-                <div style={{color:'var(--tx3)',marginTop:2}}><span style={{fontWeight:600}}>Customer:</span> {selectedJob.customer?.name??'—'}</div>
+              <div style={{padding:'0.7rem 0.85rem',borderRadius:'0.55rem',background:'var(--accent-dim)',border:'1px solid rgba(45,212,191,0.2)',fontSize:'0.78rem'}}>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+                  <CheckCircle2 size={13} style={{color:'var(--accent)'}}/>
+                  <span style={{fontWeight:700,color:'var(--accent)'}}>Confirm delivery details</span>
+                </div>
+                <div style={{color:'var(--tx2)'}}><span style={{fontWeight:600}}>Customer:</span> {selectedJob.customer?.name??'—'}</div>
+                <div style={{color:'var(--tx3)',marginTop:2}}><span style={{fontWeight:600}}>Planned dest:</span> {selectedJob.delivery_destination}</div>
               </div>
             )}
+
+            {/* Read-only DO line items — schema tracks delivery status per job, not per coil line */}
+            {selectedJob&&(
+              <div>
+                <label style={lbl}>Coil Items on this DO</label>
+                {loadingLines ? (
+                  <div style={{display:'flex',alignItems:'center',gap:6,color:'var(--tx4)',fontSize:'0.78rem'}}>
+                    <Loader2 size={12} style={{animation:'spin 0.8s linear infinite'}}/> Loading line items…
+                  </div>
+                ) : doLines && doLines.length > 0 ? (
+                  <div style={{border:'1px solid var(--gb)',borderRadius:'0.55rem',overflow:'hidden'}}>
+                    <table className="st-table">
+                      <thead><tr><th>Grade</th><th>Thick</th><th>Width</th><th>Qty</th><th>Wt (MT)</th></tr></thead>
+                      <tbody>
+                        {doLines.map(it=>(
+                          <tr key={it.id}>
+                            <td className="cell-primary">{it.coil_grade}</td>
+                            <td className="cell-mono">{it.thickness_mm}</td>
+                            <td className="cell-mono">{it.width_mm}</td>
+                            <td className="cell-mono">{it.quantity}</td>
+                            <td className="cell-mono">{it.weight_mt}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div style={{fontSize:'0.76rem',color:'var(--tx4)'}}>No coil items found on the linked DO</div>
+                )}
+              </div>
+            )}
+
             {isAdmin&&(
               <div>
                 <label style={lbl}>Logging On Behalf Of</label>
@@ -153,6 +372,14 @@ export const LogDeliveryPage = () => {
                   </label>
                 ))}
               </div>
+              {form.delivery_status==='partial' && (
+                <div style={{marginTop:'0.65rem'}}>
+                  <label style={lbl}>Reason for Partial Delivery *</label>
+                  <textarea style={{...inp,resize:'vertical',border:'1px solid #fbbf24',background:'rgba(251,191,36,0.07)'} as React.CSSProperties}
+                    rows={2} value={form.partial_reason} onChange={e=>setField('partial_reason',e.target.value)}
+                    placeholder="e.g. 2 of 3 coils unloaded, 1 held back for QC recheck…"/>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -190,13 +417,22 @@ export const LogDeliveryPage = () => {
         <div style={card}>
           <span style={{fontWeight:700,fontSize:'0.88rem',color:'var(--tx1)',display:'block',marginBottom:'0.85rem'}}>Evidence</span>
           <div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>
-            <button type="button" onClick={()=>{ setPhotoLabel('unload_'+Date.now()+'.jpg'); toast.success('Photo captured') }}
-              style={{width:'100%',padding:'1.25rem',borderRadius:'0.65rem',border:`2px dashed ${photoLabel?'#34d399':'var(--gb)'}`,background:photoLabel?'rgba(52,211,153,0.08)':'var(--g1)',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:'0.4rem'}}>
-              <Camera size={20} style={{color:photoLabel?'#34d399':'var(--tx4)'}}/>
-              <span style={{fontSize:'0.78rem',color:photoLabel?'#34d399':'var(--tx4)',fontWeight:600}}>
-                {photoLabel?`✓ ${photoLabel}`:'Photo of unloaded material at customer site'}
-              </span>
-            </button>
+            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoChange} style={{ display: 'none' }} id="delivery-photo-input" />
+            {photoPreview ? (
+              <div style={{ position: 'relative' }}>
+                <img src={photoPreview} alt="Unload proof preview" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: '0.65rem', border: '1px solid #34d399' }} />
+                <button type="button" onClick={clearPhoto}
+                  style={{ position: 'absolute', top: 8, right: 8, width: 26, height: 26, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.6)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                  <X size={13} />
+                </button>
+              </div>
+            ) : (
+              <label htmlFor="delivery-photo-input"
+                style={{width:'100%',padding:'1.25rem',borderRadius:'0.65rem',border:'2px dashed var(--gb)',background:'var(--g1)',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:'0.4rem'}}>
+                <Camera size={20} style={{color:'var(--tx4)'}}/>
+                <span style={{fontSize:'0.78rem',color:'var(--tx4)',fontWeight:600}}>Photo of unloaded material at customer site *</span>
+              </label>
+            )}
             <button type="button" onClick={fetchGPS} disabled={gpsStatus==='fetching'}
               style={{width:'100%',padding:'0.65rem 0.75rem',borderRadius:'0.55rem',border:`1px solid ${gpsStatus==='got'?'#34d399':'var(--gb)'}`,background:gpsStatus==='got'?'rgba(52,211,153,0.1)':'var(--g2)',color:gpsStatus==='got'?'#34d399':'var(--tx3)',cursor:'pointer',display:'flex',alignItems:'center',gap:'0.5rem',fontSize:'0.82rem',fontWeight:600}}>
               <MapPin size={14}/>
@@ -208,10 +444,15 @@ export const LogDeliveryPage = () => {
           </div>
         </div>
 
-        <div style={{display:'flex',gap:'0.75rem',paddingBottom:'2rem'}}>
-          <button type="button" onClick={()=>navigate(-1)} style={{flex:1,padding:'0.7rem',borderRadius:'0.6rem',border:'1px solid var(--gb)',background:'var(--g2)',color:'var(--tx2)',fontWeight:600,fontSize:'0.88rem',cursor:'pointer'}}>Cancel</button>
-          <button type="submit" disabled={submitting} style={{flex:1,padding:'0.7rem',borderRadius:'0.6rem',border:'none',background:'linear-gradient(135deg,#2dd4bf,#0d9488)',color:'#07211e',fontWeight:700,fontSize:'0.88rem',cursor:'pointer',opacity:submitting?0.65:1}}>
-            {submitting?'Logging…':'Log Delivery'}
+        <div style={{display:'flex',gap:'0.6rem',paddingBottom:'2rem',flexWrap:'wrap'}}>
+          <button type="button" onClick={()=>navigate(-1)} style={{flex:'1 1 100px',padding:'0.7rem',borderRadius:'0.6rem',border:'1px solid var(--gb)',background:'var(--g2)',color:'var(--tx2)',fontWeight:600,fontSize:'0.85rem',cursor:'pointer'}}>Cancel</button>
+          <button type="button" onClick={handleSaveLocally} disabled={savingLocal}
+            style={{flex:'1 1 130px',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem',padding:'0.7rem',borderRadius:'0.6rem',border:'1px solid var(--accent)',background:'var(--accent-dim)',color:'var(--accent)',fontWeight:700,fontSize:'0.85rem',cursor:savingLocal?'not-allowed':'pointer',opacity:savingLocal?0.65:1}}>
+            <Save size={14}/> Save Locally
+          </button>
+          <button type="submit" disabled={submitting} style={{flex:'1 1 130px',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem',padding:'0.7rem',borderRadius:'0.6rem',border:'none',background:'linear-gradient(135deg,#2dd4bf,#0d9488)',color:'#07211e',fontWeight:700,fontSize:'0.85rem',cursor:'pointer',opacity:submitting?0.65:1}}>
+            {submitting && <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} />}
+            {submitting?'Uploading…':'Log Delivery'}
           </button>
         </div>
       </form>

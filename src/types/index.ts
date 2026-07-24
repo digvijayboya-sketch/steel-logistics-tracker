@@ -1,8 +1,8 @@
 export type UserRole = 'admin' | 'planner' | 'purchase' | 'agent'
-export type DOStatus = 'draft' | 'active' | 'partially_dispatched' | 'fully_dispatched' | 'closed'
+export type DOStatus = 'draft' | 'active' | 'partially_dispatched' | 'fully_dispatched' | 'closed' | 'cancelled'
 export type JobStatus = 'assigned' | 'acknowledged' | 'at_service_centre' | 'processing' | 'processing_done' | 'in_transit_to_customer' | 'delivered' | 'cancelled'
 export type ServiceType = 'ctl' | 'slitting' | 'packing_only' | 'coil_to_coil'
-export type ExpenseCategory = 'packing_materials' | 'worker_incentive' | 'sc_extra_charge' | 'miscellaneous'
+export type ExpenseCategory = 'packing_materials' | 'worker_incentive' | 'sc_extra_charge' | 'miscellaneous' | 'fuel' | 'toll' | 'lodging' | 'labour' | 'repair'
 export type SettlementMethod = 'agent_reimbursable' | 'add_to_sc_invoice' | 'add_to_supplier_bill'
 export type ExpenseStatus = 'pending' | 'approved' | 'rejected'
 export type DeliveryStatus = 'planned' | 'partial' | 'delivered' | 'redirected'
@@ -49,6 +49,7 @@ export interface Job {
   planned_delivery_date?:string
   status:JobStatus
   created_at:string
+  updated_at?:string
   do?:DeliveryOrder
   customer?:Customer
   assigned_agent?:Profile
@@ -108,12 +109,13 @@ export interface Delivery {
   new_destination?:string
   change_reason?:string
   authorised_by_office?:boolean
+  partial_reason?:string
   created_by:string
   created_at:string
 }
 
 export const DO_STATUS_LABELS: Record<DOStatus, string> = {
-  draft: 'Draft', active: 'Active', partially_dispatched: 'Partially Dispatched', fully_dispatched: 'Fully Dispatched', closed: 'Closed'
+  draft: 'Draft', active: 'Active', partially_dispatched: 'Partially Dispatched', fully_dispatched: 'Fully Dispatched', closed: 'Closed', cancelled: 'Cancelled'
 }
 export const JOB_STATUS_LABELS: Record<JobStatus, string> = {
   assigned: 'Assigned', acknowledged: 'Acknowledged', at_service_centre: 'At Service Centre', processing: 'Processing', processing_done: 'Processing Done', in_transit_to_customer: 'In Transit', delivered: 'Delivered', cancelled: 'Cancelled'
@@ -122,7 +124,8 @@ export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
   ctl: 'Cut-to-Length', slitting: 'Slitting', packing_only: 'Packing Only', coil_to_coil: 'Coil-to-Coil'
 }
 export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
-  packing_materials: 'Packing Materials', worker_incentive: 'Worker Incentive', sc_extra_charge: 'SC Extra Charge', miscellaneous: 'Miscellaneous'
+  packing_materials: 'Packing Materials', worker_incentive: 'Worker Incentive', sc_extra_charge: 'SC Extra Charge', miscellaneous: 'Miscellaneous',
+  fuel: 'Fuel', toll: 'Toll', lodging: 'Lodging', labour: 'Labour', repair: 'Repair'
 }
 export const SETTLEMENT_LABELS: Record<SettlementMethod, string> = {
   agent_reimbursable: 'Paid by Agent', add_to_sc_invoice: 'Added to SC Invoice', add_to_supplier_bill: 'Added to Supplier Bill'

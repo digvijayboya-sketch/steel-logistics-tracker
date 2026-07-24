@@ -222,7 +222,7 @@ export const ReportsPage = () => {
           const Icon = k.icon
           const isCancelCard = k.color === '#f87171'
           return (
-            <div key={k.label} style={{ background: 'var(--card-bg)', border: isCancelCard ? '1px solid rgba(248,113,113,0.25)' : '1px solid var(--card-border)', borderTop: `3px solid ${k.color}`, borderRadius: '0.85rem', padding: '1rem 1.1rem', boxShadow: 'var(--sh-card)', background: isCancelCard ? 'rgba(248,113,113,0.04)' : 'var(--card-bg)' } as React.CSSProperties}>
+            <div key={k.label} style={{ border: isCancelCard ? '1px solid rgba(248,113,113,0.25)' : '1px solid var(--card-border)', borderTop: `3px solid ${k.color}`, borderRadius: '0.85rem', padding: '1rem 1.1rem', boxShadow: 'var(--sh-card)', background: isCancelCard ? 'rgba(248,113,113,0.04)' : 'var(--card-bg)' } as React.CSSProperties}>
               <div style={{ width: 30, height: 30, borderRadius: 8, background: `${k.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '0.5rem' }}>
                 <Icon size={14} style={{ color: k.color }} />
               </div>

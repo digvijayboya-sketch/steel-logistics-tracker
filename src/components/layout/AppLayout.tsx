@@ -1,19 +1,22 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
 import {
-  FileText, Briefcase, Factory,
-  Receipt, Truck, BarChart3, LogOut, X, Sun, Moon, LayoutDashboard, Menu, Database,
+  FileText, Briefcase, Factory, ClipboardList,
+  Receipt, Truck, BarChart3, LogOut, X, Sun, Moon, LayoutDashboard, Menu, Database, Scale, History,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard',   icon: LayoutDashboard, roles: ['admin','planner','purchase','manager','agent'] },
   { to: '/dos',        label: 'Orders',     icon: FileText,         roles: ['admin','planner','purchase','manager'] },
+  { to: '/planning',   label: 'Planning',   icon: ClipboardList,    roles: ['admin','planner'] },
   { to: '/jobs',       label: 'Jobs',       icon: Briefcase,        roles: ['admin','planner','agent','manager'] },
   { to: '/queue',      label: 'SC Queue',   icon: Factory,          roles: ['admin','planner','agent','manager'] },
   { to: '/expenses',   label: 'Expenses',   icon: Receipt,          roles: ['admin','planner','agent','manager'] },
   { to: '/deliveries', label: 'Deliveries', icon: Truck,            roles: ['admin','planner','agent','manager'] },
   { to: '/reports',    label: 'Reports',    icon: BarChart3,        roles: ['admin','planner','purchase','manager'] },
+  { to: '/reconciliation', label: 'Reconciliation', icon: Scale,    roles: ['admin','manager'] },
+  { to: '/audit',      label: 'Audit Trail',icon: History,          roles: ['admin'] },
   { to: '/master',     label: 'Master Data',icon: Database,         roles: ['admin'] },
 ]
 

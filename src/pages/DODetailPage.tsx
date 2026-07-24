@@ -9,11 +9,22 @@ import { useRole } from '@/hooks/useRole'
 import { supabase } from '@/lib/supabase'
 import { DO_STATUS_LABELS, JOB_STATUS_LABELS } from '@/types'
 import type { DOStatus, JobStatus } from '@/types'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatDateTime } from '@/lib/utils'
 import {
   ClipboardList, ChevronLeft, Package, User, ChevronRight,
-  CheckCircle2, XCircle, Trash2, AlertTriangle, Loader2,
+  XCircle, Trash2, AlertTriangle, Loader2, Scale, History,
+  Factory, Receipt, Truck, MapPin, ArrowRight,
 } from 'lucide-react'
+
+type TimelineEvent = {
+  id: string
+  at: string
+  color: string
+  icon: React.ElementType
+  label: string
+  detail: string
+  actor?: string
+}
 
 const DO_COLORS: Record<DOStatus, string> = {
   draft: '#94a3b8', active: '#60a5fa', partially_dispatched: '#fbbf24',
@@ -63,7 +74,7 @@ const ConfirmModal = ({
 
 // ── Page ───────────────────────────────────────────────────────────────
 export const DODetailPage = () => {
-  const { id } = useParams()
+  const { id = '' } = useParams()
   const navigate = useNavigate()
   const { isPlanner, isAdmin } = useRole()
 
@@ -71,17 +82,13 @@ export const DODetailPage = () => {
   const [linkedJobs, setLinkedJobs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([])
+  const [timelineLoading, setTimelineLoading] = useState(false)
 
   // cancel / delete modal state
   const [modal, setModal] = useState<'cancel' | 'delete' | null>(null)
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState('')
-
-  // plan job form
-  const [planning, setPlanning] = useState(false)
-  const [agents, setAgents] = useState<any[]>([])
-  const [form, setForm] = useState({ agentId: '', destination: '', serviceType: 'slitting', plannedDate: '', instructions: '' })
-  const [saved, setSaved] = useState(false)
 
   // ── fetch
   const fetchData = async () => {
@@ -99,14 +106,91 @@ export const DODetailPage = () => {
 
     const { data: jobRows } = await supabase
       .from('jobs')
-      .select(`id, job_number, status, delivery_destination, assigned_agent:profiles(id,full_name)`)
+      .select(`id, job_number, status, delivery_destination, assigned_agent:profiles!jobs_assigned_agent_id_fkey(id,full_name)`)
       .eq('do_id', id)
     setLinkedJobs(jobRows ?? [])
-
-    const { data: agentRows } = await supabase
-      .from('profiles').select('id, full_name').in('role', ['agent']).order('full_name')
-    setAgents(agentRows ?? [])
     setLoading(false)
+    fetchTimeline(id ?? '', jobRows ?? [])
+  }
+
+  // Merges 4 sources into one chronological feed: audit_log (DO + its jobs),
+  // queue_updates, expenses, deliveries. audit_log SELECT is RLS-restricted to
+  // admin/planner — for other roles that query just returns fewer rows, not an error.
+  const fetchTimeline = async (doId: string, jobRowsForTimeline: any[]) => {
+    setTimelineLoading(true)
+    const events: TimelineEvent[] = []
+    const jobIds = jobRowsForTimeline.map(j => j.id)
+    const jobNoOf = (jid: string) => jobRowsForTimeline.find(j => j.id === jid)?.job_number ?? jid.slice(0, 8)
+
+    const { data: doAudit } = await supabase
+      .from('audit_log')
+      .select('id, field, old_value, new_value, changed_at, changed_by_profile:profiles!audit_log_changed_by_fkey(full_name)')
+      .eq('entity', 'delivery_orders').eq('entity_id', doId)
+    for (const a of doAudit ?? []) {
+      events.push({ id: `audit-do-${a.id}`, at: a.changed_at, color: '#a78bfa', icon: History,
+        label: `DO ${a.field} changed`, detail: `${a.old_value || '—'} → ${a.new_value || '—'}`,
+        actor: (a.changed_by_profile as any)?.full_name })
+    }
+
+    if (jobIds.length > 0) {
+      const { data: jobAudit } = await supabase
+        .from('audit_log')
+        .select('id, entity_id, field, old_value, new_value, changed_at, changed_by_profile:profiles!audit_log_changed_by_fkey(full_name)')
+        .eq('entity', 'jobs').in('entity_id', jobIds)
+      for (const a of jobAudit ?? []) {
+        events.push({ id: `audit-job-${a.id}`, at: a.changed_at, color: '#60a5fa', icon: History,
+          label: `Job ${jobNoOf(a.entity_id)} ${a.field} changed`, detail: `${a.old_value || '—'} → ${a.new_value || '—'}`,
+          actor: (a.changed_by_profile as any)?.full_name })
+      }
+
+      const { data: queueRows } = await supabase
+        .from('queue_updates')
+        .select('id, job_id, checkin_time, processing_completed_at, queue_number, service_centre:service_centres(name), logged_by_profile:profiles!queue_updates_logged_by_fkey(full_name)')
+        .in('job_id', jobIds)
+      for (const q of queueRows ?? []) {
+        events.push({ id: `queue-${q.id}`, at: q.checkin_time, color: '#fbbf24', icon: Factory,
+          label: `SC check-in — ${jobNoOf(q.job_id)}`,
+          detail: `${(q.service_centre as any)?.name ?? '—'}${q.queue_number ? ` · Queue #${q.queue_number}` : ''}`,
+          actor: (q.logged_by_profile as any)?.full_name })
+        if (q.processing_completed_at) {
+          events.push({ id: `queue-done-${q.id}`, at: q.processing_completed_at, color: '#34d399', icon: Factory,
+            label: `Processing complete — ${jobNoOf(q.job_id)}`, detail: (q.service_centre as any)?.name ?? '—' })
+        }
+      }
+
+      const { data: expenseRows } = await supabase
+        .from('expenses')
+        .select('id, job_id, category, amount_inr, status, created_at, reviewed_at, logged_by_profile:profiles!expenses_logged_by_fkey(full_name)')
+        .in('job_id', jobIds)
+      for (const e of expenseRows ?? []) {
+        events.push({ id: `expense-${e.id}`, at: e.created_at, color: '#fbbf24', icon: Receipt,
+          label: `Expense logged — ${jobNoOf(e.job_id)}`, detail: `${e.category} · ₹${Number(e.amount_inr).toLocaleString('en-IN')}`,
+          actor: (e.logged_by_profile as any)?.full_name })
+        if (e.status !== 'pending' && e.reviewed_at) {
+          events.push({ id: `expense-review-${e.id}`, at: e.reviewed_at, color: e.status === 'approved' ? '#34d399' : '#f87171', icon: Receipt,
+            label: `Expense ${e.status} — ${jobNoOf(e.job_id)}`, detail: `${e.category} · ₹${Number(e.amount_inr).toLocaleString('en-IN')}` })
+        }
+      }
+
+      const { data: deliveryRows } = await supabase
+        .from('deliveries')
+        .select('id, job_id, delivery_status, customer_name, delivered_at, created_at, destination_changed, old_destination, new_destination, authorised_by_office, created_by_profile:profiles!deliveries_created_by_fkey(full_name)')
+        .in('job_id', jobIds)
+      for (const d of deliveryRows ?? []) {
+        events.push({ id: `delivery-${d.id}`, at: d.delivered_at, color: '#2dd4bf', icon: Truck,
+          label: `Delivery recorded — ${jobNoOf(d.job_id)}`, detail: `${d.delivery_status} · ${d.customer_name}`,
+          actor: (d.created_by_profile as any)?.full_name })
+        if (d.destination_changed) {
+          events.push({ id: `dest-change-${d.id}`, at: d.created_at, color: '#fb923c', icon: MapPin,
+            label: `Destination changed — ${jobNoOf(d.job_id)}`,
+            detail: `${d.old_destination ?? '—'} → ${d.new_destination ?? '—'} (${d.authorised_by_office ? 'office-authorised' : 'self-authorised'})` })
+        }
+      }
+    }
+
+    events.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+    setTimeline(events)
+    setTimelineLoading(false)
   }
 
   useEffect(() => { fetchData() }, [id])
@@ -115,52 +199,40 @@ export const DODetailPage = () => {
   const handleCancel = async () => {
     setBusy(true)
     try {
-      // Cancel all non-terminal linked jobs
+      // Cancel the DO first — if this fails, no jobs get cancelled as an inconsistent side effect
+      const { error: doErr } = await supabase.from('delivery_orders').update({ status: 'cancelled' }).eq('id', id)
+      if (doErr) throw doErr
+
       const cancelableJobs = linkedJobs.filter(j => !['delivered', 'cancelled'].includes(j.status))
       if (cancelableJobs.length > 0) {
-        await supabase.from('jobs')
+        const { error: jobsErr } = await supabase.from('jobs')
           .update({ status: 'cancelled' })
           .in('id', cancelableJobs.map(j => j.id))
+        if (jobsErr) throw jobsErr
       }
-      // Cancel the DO
-      await supabase.from('delivery_orders').update({ status: 'cancelled' as any }).eq('id', id)
       setModal(null)
       setToast(`DO cancelled. ${cancelableJobs.length} job(s) also cancelled.`)
       await fetchData()
     } catch (e: any) {
-      setToast('Error: ' + e.message)
+      setToast('Error: ' + (e?.message ?? 'Failed to cancel DO'))
     } finally {
       setBusy(false)
     }
   }
 
-  // ── Hard delete (admin, draft only)
+  // ── Hard delete (admin, draft only). do_items.do_id is ON DELETE CASCADE, so
+  // deleting the DO row alone cleans up its items too.
   const handleDelete = async () => {
     setBusy(true)
     try {
-      await supabase.from('do_items').delete().eq('do_id', id)
-      await supabase.from('delivery_orders').delete().eq('id', id)
+      const { error: doErr, data: deletedRows } = await supabase.from('delivery_orders').delete().eq('id', id).select('id')
+      if (doErr) throw doErr
+      if (!deletedRows || deletedRows.length === 0) throw new Error('Delete was blocked — you may not have permission to delete this DO')
       navigate('/dos', { replace: true })
     } catch (e: any) {
-      setToast('Error: ' + e.message)
+      setToast('Error: ' + (e?.message ?? 'Failed to delete DO'))
       setBusy(false)
     }
-  }
-
-  // ── Save job plan
-  const handleSavePlan = async () => {
-    if (!form.agentId || !form.destination) return
-    const jobNum = `JOB-${Date.now().toString().slice(-6)}`
-    const { error } = await supabase.from('jobs').insert({
-      job_number: jobNum, do_id: id, customer_id: null,
-      delivery_destination: form.destination,
-      service_type: form.serviceType,
-      assigned_agent_id: form.agentId,
-      planned_delivery_date: form.plannedDate || null,
-      processing_instructions: form.instructions,
-      status: 'assigned',
-    })
-    if (!error) { setSaved(true); setPlanning(false); await fetchData() }
   }
 
   if (loading) return (
@@ -174,19 +246,15 @@ export const DODetailPage = () => {
     </div>
   )
 
-  const doColor = DO_COLORS[(doItem.status as DOStatus)] ?? '#94a3b8'
   const isCancelled = doItem.status === 'cancelled'
   const isDraft     = doItem.status === 'draft'
   const hasJob      = linkedJobs.length > 0
+  const isPlanned   = doItem.status === 'active' && hasJob
+  const doColor     = isPlanned ? '#a78bfa' : (DO_COLORS[(doItem.status as DOStatus)] ?? '#94a3b8')
+  const doStatusLabel = isPlanned ? 'Job Assigned' : (DO_STATUS_LABELS[(doItem.status as DOStatus)] ?? doItem.status)
   const canPlan     = (isPlanner || isAdmin) && !hasJob && !isDraft && !isCancelled
   const canCancel   = (isPlanner || isAdmin) && !isCancelled && !['fully_dispatched','closed'].includes(doItem.status)
   const canDelete   = isAdmin && isDraft
-
-  const inp = (extra?: React.CSSProperties): React.CSSProperties => ({
-    width: '100%', padding: '0.5rem 0.75rem', borderRadius: '0.5rem',
-    border: '1px solid var(--input-border)', background: 'var(--input-bg)',
-    color: 'var(--tx1)', fontSize: '0.84rem', outline: 'none', ...extra,
-  })
 
   return (
     <div style={{ minHeight: '100%', padding: '1.5rem 1.75rem', maxWidth: 1100, margin: '0 auto' }}>
@@ -227,12 +295,18 @@ export const DODetailPage = () => {
         <div>
           <h1 style={{ color: 'var(--tx1)', fontSize: '1.375rem', fontWeight: 800, letterSpacing: '-0.02em', margin: 0 }}>{doItem.do_number}</h1>
           <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.22rem 0.65rem', borderRadius: 999, background: `${doColor}22`, color: doColor, border: `1px solid ${doColor}44`, textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: 6, display: 'inline-block' }}>
-            {DO_STATUS_LABELS[(doItem.status as DOStatus)] ?? doItem.status}
+            {doStatusLabel}
           </span>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {canPlan && !planning && (
-            <button onClick={() => setPlanning(true)}
+          {isAdmin && (
+            <button onClick={() => navigate(`/reconciliation?do=${id}`)}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1.1rem', borderRadius: '0.6rem', border: '1px solid var(--gb)', background: 'var(--g2)', color: 'var(--tx2)', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer' }}>
+              <Scale size={14} /> Reconciliation
+            </button>
+          )}
+          {canPlan && (
+            <button onClick={() => navigate(`/planning?do=${id}`)}
               style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1.1rem', borderRadius: '0.6rem', border: 'none', background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', color: '#fff', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer', boxShadow: '0 4px 14px rgba(124,58,237,0.3)' }}>
               <ClipboardList size={14} /> Plan Job
             </button>
@@ -297,58 +371,6 @@ export const DODetailPage = () => {
 
         {/* Right column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* Plan job form */}
-          {planning && (
-            <div style={{ background: 'var(--card-bg)', border: '2px solid rgba(167,139,250,0.4)', borderRadius: '0.85rem', padding: '1.25rem', boxShadow: '0 4px 24px rgba(124,58,237,0.15)' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--tx1)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <ClipboardList size={15} style={{ color: '#a78bfa' }} /> Plan & Assign Job
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <div>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--tx4)', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: 4 }}>Assign Agent</label>
-                  <select value={form.agentId} onChange={e => setForm(f => ({ ...f, agentId: e.target.value }))} style={inp()}>
-                    <option value="">Select agent…</option>
-                    {agents.map((a: any) => <option key={a.id} value={a.id}>{a.full_name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--tx4)', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: 4 }}>Delivery Destination</label>
-                  <input value={form.destination} onChange={e => setForm(f => ({ ...f, destination: e.target.value }))} placeholder="City / address" style={inp()} />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                  <div>
-                    <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--tx4)', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: 4 }}>Service Type</label>
-                    <select value={form.serviceType} onChange={e => setForm(f => ({ ...f, serviceType: e.target.value }))} style={inp()}>
-                      <option value="ctl">Cut-to-Length</option>
-                      <option value="slitting">Slitting</option>
-                      <option value="packing_only">Packing Only</option>
-                      <option value="coil_to_coil">Coil-to-Coil</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--tx4)', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: 4 }}>Planned Delivery</label>
-                    <input type="date" value={form.plannedDate} onChange={e => setForm(f => ({ ...f, plannedDate: e.target.value }))} style={inp()} />
-                  </div>
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--tx4)', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: 4 }}>Processing Instructions</label>
-                  <textarea value={form.instructions} onChange={e => setForm(f => ({ ...f, instructions: e.target.value }))} placeholder="Cut sizes, tolerances, special notes…" rows={3} style={inp({ resize: 'vertical' })} />
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
-                  <button onClick={() => setPlanning(false)} style={{ padding: '0.45rem 1rem', borderRadius: '0.5rem', border: '1px solid var(--gb)', background: 'var(--g2)', color: 'var(--tx2)', fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer' }}>Discard</button>
-                  <button onClick={handleSavePlan} style={{ padding: '0.45rem 1.1rem', borderRadius: '0.5rem', border: 'none', background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>Save Job</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {saved && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.7rem 1rem', borderRadius: '0.65rem', background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.3)' }}>
-              <CheckCircle2 size={15} style={{ color: '#34d399' }} />
-              <span style={{ fontSize: '0.84rem', color: 'var(--tx1)', fontWeight: 600 }}>Job created and agent assigned successfully.</span>
-            </div>
-          )}
-
           {/* Linked jobs */}
           <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', overflow: 'hidden', boxShadow: 'var(--sh-card)' }}>
             <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--gb)', fontWeight: 700, fontSize: '0.88rem', color: 'var(--tx1)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -383,6 +405,48 @@ export const DODetailPage = () => {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Timeline */}
+      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', overflow: 'hidden', boxShadow: 'var(--sh-card)', marginTop: '1.25rem' }}>
+        <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--gb)', fontWeight: 700, fontSize: '0.88rem', color: 'var(--tx1)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <History size={14} style={{ color: 'var(--accent)' }} /> Timeline
+        </div>
+        {timelineLoading ? (
+          <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--tx4)', fontSize: '0.84rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+            <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> Loading timeline…
+          </div>
+        ) : timeline.length === 0 ? (
+          <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--tx4)', fontSize: '0.84rem' }}>
+            No activity recorded yet.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {timeline.map(ev => {
+              const Icon = ev.icon
+              return (
+                <div key={ev.id} style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--gb)', display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: `${ev.color}22`, border: `1px solid ${ev.color}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
+                    <Icon size={13} style={{ color: ev.color }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 700, fontSize: '0.84rem', color: 'var(--tx1)' }}>{ev.label}</span>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--tx4)', whiteSpace: 'nowrap' }}>{formatDateTime(ev.at)}</span>
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--tx3)', marginTop: 2, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <ArrowRight size={10} style={{ opacity: 0.5, flexShrink: 0 }} />
+                      <span>{ev.detail}</span>
+                    </div>
+                    {ev.actor && (
+                      <div style={{ fontSize: '0.72rem', color: 'var(--tx4)', marginTop: 2 }}>by {ev.actor}</div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

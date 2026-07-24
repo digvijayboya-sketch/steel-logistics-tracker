@@ -40,14 +40,12 @@ export const LoginPage = () => {
   const [success,   setSuccess]  = useState(false)
   const [error,     setError]    = useState('')
 
-  const attemptLogin = (em: string, pw: string) => {
+  const attemptLogin = async (em: string, pw: string) => {
     setLoading(true); setError('')
-    setTimeout(() => {
-      const ok = login(em, pw)
-      setLoading(false)
-      if (ok) { setSuccess(true); setTimeout(() => navigate('/dashboard'), 600) }
-      else { setError('Invalid email or password. Please try again.'); toast.error('Invalid credentials') }
-    }, 450)
+    const result = await login(em, pw)
+    setLoading(false)
+    if (!result.error) { setSuccess(true); setTimeout(() => navigate('/dashboard'), 600) }
+    else { setError(result.error || 'Invalid email or password. Please try again.'); toast.error(result.error || 'Invalid credentials') }
   }
 
   return (

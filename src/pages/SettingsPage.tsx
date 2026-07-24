@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useRole, ROLE_META } from '@/hooks/useRole'
 import { useAuthStore } from '@/store/appStore'
 import { useTheme } from '@/hooks/useTheme'
-import { Sun, Moon, LogOut, User, Shield, Bell, Database } from 'lucide-react'
+import { Sun, Moon, LogOut, User, Shield, Bell, Database, ChevronRight } from 'lucide-react'
 
 const PageShell = ({ children }: { children: React.ReactNode }) => (
   <div style={{ minHeight: '100%', padding: '1.5rem 1.75rem', maxWidth: 720, margin: '0 auto' }}>
@@ -20,13 +20,14 @@ const SectionCard = ({ title, icon, children }: { title: string; icon: React.Rea
   </div>
 )
 
-const Row = ({ label, value, action }: { label: string; value?: string; action?: React.ReactNode }) => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0', borderBottom: '1px solid var(--gb)' }}>
+const Row = ({ label, value, action, onClick }: { label: string; value?: string; action?: React.ReactNode; onClick?: () => void }) => (
+  <div onClick={onClick}
+    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0', borderBottom: '1px solid var(--gb)', cursor: onClick ? 'pointer' : 'default' }}>
     <div>
       <div style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--tx1)' }}>{label}</div>
       {value && <div style={{ fontSize: '0.78rem', color: 'var(--tx3)', marginTop: 2 }}>{value}</div>}
     </div>
-    {action && <div style={{ flexShrink: 0 }}>{action}</div>}
+    {action ? <div style={{ flexShrink: 0 }}>{action}</div> : onClick ? <ChevronRight size={15} style={{ color: 'var(--tx4)', flexShrink: 0 }} /> : null}
   </div>
 )
 
@@ -52,7 +53,7 @@ export const SettingsPage = () => {
 
       {/* Profile */}
       <SectionCard title="Profile" icon={<User size={15} />}>
-        <Row label="Full name"   value={user?.full_name ?? '—'} />
+        <Row label="Full name"   value={user?.name ?? '—'} />
         <Row label="Email"       value={user?.email ?? '—'} />
         <Row label="Role"
           action={
@@ -92,10 +93,10 @@ export const SettingsPage = () => {
       {/* Admin: Data */}
       {isAdmin && (
         <SectionCard title="Administration" icon={<Shield size={15} />}>
-          <Row label="User management"     value="Manage roles and access" />
-          <Row label="Service centres"     value="Add / edit SC list" />
-          <Row label="Supplier directory"  value="Manage suppliers" />
-          <Row label="Audit log"           value="Full activity trail" />
+          <Row label="User management"     value="Manage roles and access" onClick={() => navigate('/master?tab=users')} />
+          <Row label="Service centres"     value="Add / edit SC list"      onClick={() => navigate('/master?tab=service_centres')} />
+          <Row label="Supplier directory"  value="Manage suppliers"        onClick={() => navigate('/master?tab=suppliers')} />
+          <Row label="Audit log"           value="Full activity trail"     onClick={() => navigate('/audit')} />
         </SectionCard>
       )}
 

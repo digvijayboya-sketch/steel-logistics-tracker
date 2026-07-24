@@ -12,7 +12,7 @@
  *   do-documents    (private, 20 MB, pdf/image)
  */
 import { supabase } from './supabase'
-import type { DOStatus, JobStatus, ExpenseStatus, ServiceTypeDB } from './database.types'
+import type { DOStatus, JobStatus, ExpenseStatus, ServiceTypeDB, UserRole, ExpenseCategory, SettlementMethod, DeliveryStatus } from './database.types'
 
 // ── Auth ──────────────────────────────────────────────────────
 export const apiSignIn = (email: string, password: string) =>
@@ -73,7 +73,7 @@ export const apiCreateServiceCentre = async (p: { name: string; city?: string })
   if (error) throw error; return data
 }
 export const apiUpdateServiceCentre = async (id: string, p: { name?: string; city?: string }) => {
-  const updates: Record<string, string> = {}
+  const updates: { name?: string; city?: string } = {}
   if (p.name !== undefined) updates.name = p.name
   if (p.city !== undefined) updates.city = p.city
   const { data, error } = await supabase.from('service_centres').update(updates).eq('id', id).select('id, name, city').single()
@@ -95,7 +95,7 @@ export const apiCreateCustomer = async (p: { name: string; city?: string }) => {
   if (error) throw error; return data
 }
 export const apiUpdateCustomer = async (id: string, p: { name?: string; city?: string }) => {
-  const updates: Record<string, string> = {}
+  const updates: { name?: string; city?: string } = {}
   if (p.name !== undefined) updates.name = p.name
   if (p.city !== undefined) updates.city = p.city
   const { data, error } = await supabase.from('customers').update(updates).eq('id', id).select('id, name, city').single()
@@ -118,12 +118,12 @@ export const apiGetAllProfiles = async () => {
     .from('profiles').select('id, full_name, role, phone, created_at').order('full_name')
   if (error) throw error; return data ?? []
 }
-export const apiUpdateUserRole = async (id: string, role: string) => {
+export const apiUpdateUserRole = async (id: string, role: UserRole) => {
   const { data, error } = await supabase.from('profiles').update({ role }).eq('id', id).select('id, full_name, role, phone, created_at').single()
   if (error) throw error; return data
 }
 export const apiUpdateUserProfile = async (id: string, patch: { full_name?: string; phone?: string }) => {
-  const updates: Record<string, string> = {}
+  const updates: { full_name?: string; phone?: string } = {}
   if (patch.full_name !== undefined) updates.full_name = patch.full_name
   if (patch.phone    !== undefined) updates.phone     = patch.phone
   const { data, error } = await supabase.from('profiles').update(updates).eq('id', id).select('id, full_name, role, phone, created_at').single()
@@ -176,10 +176,10 @@ export const apiGetJobs = async () => {
   const { data, error } = await supabase
     .from('jobs')
     .select(`id, job_number, delivery_destination, service_type, packing_type,
-      planned_delivery_date, status, created_at,
+      planned_delivery_date, status, created_at, updated_at, assigned_agent_id,
       do:delivery_orders(id,do_number,source_service_centre:service_centres(id,name,city)),
       customer:customers(id,name,city),
-      assigned_agent:profiles(id,full_name,role)`)
+      assigned_agent:profiles!jobs_assigned_agent_id_fkey(id,full_name,role)`)
     .order('created_at', { ascending: false })
   if (error) throw error; return data ?? []
 }
@@ -187,7 +187,7 @@ export const apiGetJob = async (id: string) => {
   const { data, error } = await supabase
     .from('jobs')
     .select(`*, do:delivery_orders(*, supplier:suppliers(*), source_service_centre:service_centres(*), items:do_items(*)),
-      customer:customers(*), assigned_agent:profiles(id,full_name,role,phone),
+      customer:customers(*), assigned_agent:profiles!jobs_assigned_agent_id_fkey(id,full_name,role,phone),
       queue_updates(*), expenses(*), deliveries(*)`)
     .eq('id', id).single()
   if (error) throw error; return data
@@ -211,7 +211,7 @@ export const apiUpdateJobStatus = async (id: string, status: JobStatus, changedB
 export const apiGetQueueUpdates = async () => {
   const { data, error } = await supabase
     .from('queue_updates')
-    .select(`id, queue_number, checkin_time, estimated_processing_minutes,
+    .select(`id, job_id, queue_number, checkin_time, estimated_processing_minutes,
       processing_started_at, processing_completed_at, notes, created_at,
       service_centre:service_centres(id,name,city),
       logged_by_profile:profiles!queue_updates_logged_by_fkey(id,full_name)`)
@@ -246,8 +246,9 @@ export const apiGetExpenses = async () => {
   if (error) throw error; return data ?? []
 }
 export const apiAddExpense = async (payload: {
-  job_id: string; category: string; amount_inr: number; payee_description: string
-  settlement_method: string; photo_url?: string; gps_lat?: number; gps_lng?: number; logged_by: string
+  job_id: string; category: ExpenseCategory; amount_inr: number; payee_description: string
+  settlement_method: SettlementMethod; photo_url?: string; gps_lat?: number; gps_lng?: number; logged_by: string
+  created_at?: string
 }) => {
   const { data, error } = await supabase.from('expenses').insert(payload).select().single()
   if (error) throw error; return data
@@ -265,34 +266,40 @@ export const apiGetDeliveries = async () => {
     .from('deliveries')
     .select(`id, customer_name, delivery_address, vehicle_number, delivered_at,
       delivery_status, destination_changed, old_destination, new_destination,
-      change_reason, authorised_by_office, created_at, job_id,
+      change_reason, partial_reason, authorised_by_office, created_at, job_id,
       created_by_profile:profiles!deliveries_created_by_fkey(id,full_name)`)
     .order('delivered_at', { ascending: false })
   if (error) throw error; return data ?? []
 }
+export const apiAuthoriseDelivery = async (id: string) => {
+  const { error } = await supabase.from('deliveries').update({ authorised_by_office: true }).eq('id', id)
+  if (error) throw error
+}
 export const apiAddDelivery = async (payload: {
   job_id: string; customer_name: string; delivery_address: string; vehicle_number: string
-  delivered_at: string; delivery_status?: string; unloaded_photo_url?: string
+  delivered_at: string; delivery_status?: DeliveryStatus; unloaded_photo_url?: string
   final_lat?: number; final_lng?: number; destination_changed?: boolean
   old_destination?: string; new_destination?: string; change_reason?: string
-  authorised_by_office?: boolean; created_by: string
+  partial_reason?: string; authorised_by_office?: boolean; created_by: string
 }) => {
   const { data, error } = await supabase.from('deliveries').insert(payload).select().single()
   if (error) throw error
   await supabase.from('jobs').update({ status: 'delivered' }).eq('id', payload.job_id)
+  await apiWriteAudit({ entity: 'deliveries', entity_id: data.id, field: 'delivery_status', old_value: '', new_value: payload.delivery_status ?? 'delivered', changed_by: payload.created_by })
   return data
 }
 
 // ── Storage ─────────────────────────────────────────────────
 /**
  * Upload a file to storage and return the public/signed URL.
- * Buckets: 'expense-photos' (public) | 'do-documents' (private)
+ * Buckets: 'expense-photos' (public) | 'delivery-proofs' (public) | 'do-documents' (private)
  * Path convention:
  *   expense-photos/<userId>/<jobId>/<timestamp>.<ext>
+ *   delivery-proofs/<userId>/<jobId>/<timestamp>.<ext>
  *   do-documents/<userId>/<doId>/<timestamp>.<ext>
  */
 export const apiUploadPhoto = async (
-  bucket: 'expense-photos' | 'do-documents',
+  bucket: 'expense-photos' | 'delivery-proofs' | 'do-documents',
   path: string,
   file: File
 ): Promise<string> => {
@@ -300,7 +307,7 @@ export const apiUploadPhoto = async (
     .from(bucket)
     .upload(path, file, { upsert: true, contentType: file.type })
   if (error) throw error
-  if (bucket === 'expense-photos') {
+  if (bucket === 'expense-photos' || bucket === 'delivery-proofs') {
     const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(data.path)
     return urlData.publicUrl
   } else {
@@ -323,10 +330,21 @@ export const apiGetDODocumentUrl = async (path: string): Promise<string> => {
   return data.signedUrl
 }
 
+export const apiGetAuditLog = async () => {
+  const { data, error } = await supabase
+    .from('audit_log')
+    .select(`id, entity, entity_id, field, old_value, new_value, changed_by, changed_at,
+      changed_by_profile:profiles!audit_log_changed_by_fkey(id,full_name)`)
+    .order('changed_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
 // ── Audit log ────────────────────────────────────────────────
 const apiWriteAudit = async (entry: {
   entity: string; entity_id: string; field: string
   old_value?: string; new_value?: string; changed_by: string
 }) => {
-  await supabase.from('audit_log').insert(entry).catch(console.warn)
+  const { error } = await supabase.from('audit_log').insert(entry)
+  if (error) console.warn(error)
 }

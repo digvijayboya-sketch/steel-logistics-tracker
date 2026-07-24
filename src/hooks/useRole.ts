@@ -15,13 +15,14 @@ export const useRole = () => {
     Array.isArray(r) ? r.includes(role as UserRole) : role === r
 
   const isAdmin    = is(['admin', 'manager'] as any)  // treat manager === admin
+  const isPlanner  = is('planner')
   const isOps      = is(['planner', 'purchase'])       // operational
   const isAgent    = is('agent')
   const canManage  = isAdmin || isOps                  // can see full lists
   const canApprove = isAdmin                           // approve/reject expenses & DOs
   const canCreate  = isAdmin || isOps                  // create DOs & jobs
 
-  return { role, is, isAdmin, isOps, isAgent, canManage, canApprove, canCreate, user }
+  return { role, is, isAdmin, isPlanner, isOps, isAgent, canManage, canApprove, canCreate, user }
 }
 
 export const ROLE_META: Record<string, { label: string; color: string; bg: string; accent: string }> = {

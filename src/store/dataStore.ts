@@ -10,7 +10,8 @@ import {
   apiGetJobs, apiGetJob, apiCreateJob, apiUpdateJobStatus,
   apiGetQueueUpdates, apiAddQueueUpdate, apiUpdateQueueEntry,
   apiGetExpenses, apiAddExpense, apiReviewExpense,
-  apiGetDeliveries, apiAddDelivery,
+  apiGetDeliveries, apiAddDelivery, apiAuthoriseDelivery,
+  apiGetAuditLog,
   apiCreateSupplier, apiUpdateSupplier, apiDeleteSupplier,
   apiCreateServiceCentre, apiUpdateServiceCentre, apiDeleteServiceCentre,
   apiCreateCustomer, apiUpdateCustomer, apiDeleteCustomer,
@@ -41,7 +42,7 @@ export interface Job {
   id: string; job_number: string; delivery_destination: string
   service_type: string; packing_type?: string | null
   planned_delivery_date?: string | null; status: JobStatus
-  created_at: string; assigned_agent_id?: string | null
+  created_at: string; updated_at?: string; assigned_agent_id?: string | null
   do?: any; customer?: Customer | null; assigned_agent?: Pick<Profile,'id'|'full_name'|'role'> | null
   queue_updates?: any[]; expenses?: any[]; deliveries?: any[]
 }
@@ -53,6 +54,7 @@ export interface Expense {
   review_notes?: string | null; reviewed_at?: string | null
   created_at: string; job_id: string; logged_by: string
   reviewed_by?: string | null
+  logged_by_profile?: Pick<Profile,'id'|'full_name'> | null
 }
 
 export interface QueueUpdate {
@@ -70,6 +72,14 @@ export interface Delivery {
   destination_changed: boolean; old_destination?: string | null
   new_destination?: string | null; change_reason?: string | null
   authorised_by_office: boolean; created_at: string
+  partial_reason?: string | null
+}
+
+export interface AuditLogEntry {
+  id: string; entity: string; entity_id: string; field: string
+  old_value: string | null; new_value: string | null
+  changed_by: string; changed_at: string
+  changed_by_profile?: Pick<Profile,'id'|'full_name'> | null
 }
 
 type LS = Record<string, boolean>
@@ -85,6 +95,7 @@ interface DataState {
   expenses:       Expense[]
   queueUpdates:   QueueUpdate[]
   deliveries:     Delivery[]
+  auditLog:       AuditLogEntry[]
   loading: LS
   error:   string | null
 
@@ -97,6 +108,7 @@ interface DataState {
   fetchQueueUpdates:() => Promise<void>
   fetchExpenses:    () => Promise<void>
   fetchDeliveries:  () => Promise<void>
+  fetchAuditLog:    () => Promise<void>
 
   createDO:        (p: Parameters<typeof apiCreateDO>[0]) => Promise<string>
   updateDOStatus:  (id: string, s: DOStatus, uid: string)  => Promise<void>
@@ -107,6 +119,7 @@ interface DataState {
   addExpense:      (p: Parameters<typeof apiAddExpense>[0]) => Promise<void>
   reviewExpense:   (id: string, s: ExpenseStatus, notes: string, uid: string) => Promise<void>
   addDelivery:     (p: Parameters<typeof apiAddDelivery>[0]) => Promise<void>
+  authoriseDelivery: (id: string) => Promise<void>
 
   createSupplier:      (p: { name: string })             => Promise<void>
   updateSupplier:      (id: string, p: { name?: string }) => Promise<void>
@@ -124,13 +137,19 @@ interface DataState {
 const setL = (key: string, val: boolean) =>
   (s: DataState): Partial<DataState> => ({ loading: { ...s.loading, [key]: val } })
 
+// Starting a fetch also clears any previous error — otherwise a failure on one
+// page's fetch leaves a stale error banner showing on every other page until
+// something else happens to overwrite it (error is a single global slot).
+const startFetch = (key: string) =>
+  (s: DataState): Partial<DataState> => ({ loading: { ...s.loading, [key]: true }, error: null })
+
 export const useDataStore = create<DataState>((set, get) => ({
   suppliers: [], serviceCentres: [], customers: [], profiles: [], allProfiles: [],
-  dos: [], jobs: [], expenses: [], queueUpdates: [], deliveries: [],
+  dos: [], jobs: [], expenses: [], queueUpdates: [], deliveries: [], auditLog: [],
   loading: {}, error: null,
 
   fetchLookups: async () => {
-    set(setL('lookups', true))
+    set(startFetch('lookups'))
     try {
       const [suppliers, serviceCentres, customers, profiles] = await Promise.all([
         apiGetSuppliers(), apiGetServiceCentres(), apiGetCustomers(), apiGetAgents(),
@@ -147,7 +166,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   fetchAllProfiles: async () => {
-    set(setL('allProfiles', true))
+    set(startFetch('allProfiles'))
     try {
       set({ allProfiles: await apiGetAllProfiles() as unknown as Profile[] })
     } catch (e: unknown) {
@@ -156,13 +175,13 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   fetchDOs: async () => {
-    set(setL('dos', true))
+    set(startFetch('dos'))
     try { set({ dos: await apiGetDOs() as unknown as DeliveryOrder[] }) }
     catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
     finally { set(setL('dos', false)) }
   },
   fetchDO: async (id) => {
-    set(setL(`do_${id}`, true))
+    set(startFetch(`do_${id}`))
     try {
       const d = await apiGetDO(id) as unknown as DeliveryOrder
       set(s => ({ dos: s.dos.some(x => x.id === id) ? s.dos.map(x => x.id === id ? d : x) : [...s.dos, d] }))
@@ -171,13 +190,13 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   fetchJobs: async () => {
-    set(setL('jobs', true))
+    set(startFetch('jobs'))
     try { set({ jobs: await apiGetJobs() as unknown as Job[] }) }
     catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
     finally { set(setL('jobs', false)) }
   },
   fetchJob: async (id) => {
-    set(setL(`job_${id}`, true))
+    set(startFetch(`job_${id}`))
     try {
       const j = await apiGetJob(id) as unknown as Job
       set(s => ({ jobs: s.jobs.some(x => x.id === id) ? s.jobs.map(x => x.id === id ? j : x) : [...s.jobs, j] }))
@@ -186,22 +205,28 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   fetchQueueUpdates: async () => {
-    set(setL('queue', true))
+    set(startFetch('queue'))
     try { set({ queueUpdates: await apiGetQueueUpdates() as unknown as QueueUpdate[] }) }
     catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
     finally { set(setL('queue', false)) }
   },
   fetchExpenses: async () => {
-    set(setL('expenses', true))
+    set(startFetch('expenses'))
     try { set({ expenses: await apiGetExpenses() as unknown as Expense[] }) }
     catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
     finally { set(setL('expenses', false)) }
   },
   fetchDeliveries: async () => {
-    set(setL('deliveries', true))
+    set(startFetch('deliveries'))
     try { set({ deliveries: await apiGetDeliveries() as unknown as Delivery[] }) }
     catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
     finally { set(setL('deliveries', false)) }
+  },
+  fetchAuditLog: async () => {
+    set(startFetch('auditLog'))
+    try { set({ auditLog: await apiGetAuditLog() as unknown as AuditLogEntry[] }) }
+    catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
+    finally { set(setL('auditLog', false)) }
   },
 
   createDO: async (p) => { const r = await apiCreateDO(p); await get().fetchDOs(); return r.id },
@@ -213,6 +238,15 @@ export const useDataStore = create<DataState>((set, get) => ({
   updateJobStatus: async (id, status, uid) => {
     await apiUpdateJobStatus(id, status, uid)
     set(s => ({ jobs: s.jobs.map(j => j.id === id ? { ...j, status } : j) }))
+    // A DO only advances from 'active' to 'partially_dispatched' once a job actually
+    // dispatches (leaves the SC toward the customer) — not merely when planned/assigned.
+    if (status === 'in_transit_to_customer') {
+      const doId = get().jobs.find(j => j.id === id)?.do?.id
+      const linkedDO = doId ? get().dos.find(d => d.id === doId) : undefined
+      if (linkedDO && linkedDO.status === 'active') {
+        await get().updateDOStatus(doId!, 'partially_dispatched', uid).catch(() => {})
+      }
+    }
   },
   addQueueUpdate: async (p) => { await apiAddQueueUpdate(p); await get().fetchQueueUpdates() },
   updateQueueEntry: async (id, p) => {
@@ -225,6 +259,10 @@ export const useDataStore = create<DataState>((set, get) => ({
     set(s => ({ expenses: s.expenses.map(e => e.id === id ? { ...e, status, review_notes: notes, reviewed_by: uid, reviewed_at: new Date().toISOString() } : e) }))
   },
   addDelivery: async (p) => { await apiAddDelivery(p); await get().fetchDeliveries() },
+  authoriseDelivery: async (id) => {
+    await apiAuthoriseDelivery(id)
+    set(s => ({ deliveries: s.deliveries.map(d => d.id === id ? { ...d, authorised_by_office: true } : d) }))
+  },
 
   createSupplier: async (p) => {
     await apiCreateSupplier(p)
@@ -266,7 +304,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   updateUserRole: async (id, role) => {
-    await apiUpdateUserRole(id, role)
+    await apiUpdateUserRole(id, role as NonNullable<Profile['role']>)
     set(s => ({ allProfiles: s.allProfiles.map(p => p.id === id ? { ...p, role: role as Profile['role'] } : p) }))
   },
   updateUserProfile: async (id, patch) => {

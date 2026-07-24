@@ -3,11 +3,14 @@
  * Cancelled DOs are dimmed and tagged. Agents do NOT see cancelled DOs.
  */
 import { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useRole } from '@/hooks/useRole'
 import { supabase } from '@/lib/supabase'
 import { DO_STATUS_LABELS } from '@/types'
 import type { DOStatus } from '@/types'
+
+type StatusFilter = DOStatus | 'all'
+const STATUS_FILTERS: StatusFilter[] = ['all', 'active', 'draft', 'partially_dispatched', 'fully_dispatched', 'closed']
 import { formatDate } from '@/lib/utils'
 import { Plus, ChevronRight, Package, Loader2, XCircle, Search } from 'lucide-react'
 
@@ -19,10 +22,15 @@ const DO_COLORS: Record<string, string> = {
 export const DOListPage = () => {
   const { isPlanner, isAdmin, isAgent } = useRole()
   const navigate = useNavigate()
+  const [sp] = useSearchParams()
   const [dos, setDOs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [showCancelled, setShowCancelled] = useState(false)
+  const initialStatus = sp.get('status')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(
+    STATUS_FILTERS.includes(initialStatus as StatusFilter) ? (initialStatus as StatusFilter) : 'all'
+  )
 
   const fetchDOs = async () => {
     setLoading(true)
@@ -31,7 +39,8 @@ export const DOListPage = () => {
       .select(`id, do_number, status, expected_collection_date, created_at,
         supplier:suppliers(id,name),
         source_service_centre:service_centres(id,name,city),
-        items:do_items(id)`)
+        items:do_items(id),
+        jobs:jobs(id)`)
       .order('created_at', { ascending: false })
     setDOs(data ?? [])
     setLoading(false)
@@ -41,6 +50,7 @@ export const DOListPage = () => {
   const filtered = dos.filter(d => {
     if (isAgent && d.status === 'cancelled') return false
     if (!showCancelled && d.status === 'cancelled') return false
+    if (statusFilter !== 'all' && d.status !== statusFilter) return false
     const q = search.toLowerCase()
     if (!q) return true
     return d.do_number.toLowerCase().includes(q) ||
@@ -80,6 +90,19 @@ export const DOListPage = () => {
           style={{ width: '100%', padding: '0.5rem 0.75rem 0.5rem 2.1rem', borderRadius: '0.55rem', border: '1px solid var(--input-border)', background: 'var(--input-bg)', color: 'var(--tx1)', fontSize: '0.83rem', outline: 'none' }} />
       </div>
 
+      {/* Status filter chips */}
+      <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1.1rem', flexWrap: 'wrap' }}>
+        {STATUS_FILTERS.map(f => {
+          const isActive = statusFilter === f
+          return (
+            <button key={f} onClick={() => setStatusFilter(f)}
+              style={{ padding: '0.3rem 0.85rem', borderRadius: 999, border: isActive ? '2px solid var(--accent)' : '2px solid transparent', background: isActive ? 'var(--accent-dim)' : 'var(--g1)', color: isActive ? 'var(--accent)' : 'var(--tx3)', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>
+              {f === 'all' ? 'All' : DO_STATUS_LABELS[f]}
+            </button>
+          )
+        })}
+      </div>
+
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--tx3)', fontSize: '0.85rem', padding: '3rem 0', justifyContent: 'center' }}>
           <Loader2 size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> Loading…
@@ -101,7 +124,10 @@ export const DOListPage = () => {
               </thead>
               <tbody>
                 {filtered.map(d => {
-                  const col = DO_COLORS[d.status] ?? '#94a3b8'
+                  const hasJob = (d.jobs?.length ?? 0) > 0
+                  const planned = d.status === 'active' && hasJob
+                  const col = planned ? '#a78bfa' : (DO_COLORS[d.status] ?? '#94a3b8')
+                  const label = planned ? 'Job Assigned' : (DO_STATUS_LABELS[d.status as DOStatus] ?? d.status)
                   const isCancelled = d.status === 'cancelled'
                   return (
                     <tr key={d.id} style={{ opacity: isCancelled ? 0.55 : 1 }}>
@@ -117,7 +143,7 @@ export const DOListPage = () => {
                       <td>{formatDate(d.expected_collection_date)}</td>
                       <td>
                         <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.18rem 0.55rem', borderRadius: 999, background: `${col}22`, color: col, border: `1px solid ${col}44`, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
-                          {DO_STATUS_LABELS[d.status as DOStatus] ?? d.status}
+                          {label}
                         </span>
                       </td>
                       <td style={{ textAlign: 'right' }}>

@@ -7,9 +7,9 @@ import { DashboardPage } from '@/pages/DashboardPage'
 import { DOListPage } from '@/pages/DOListPage'
 import { DODetailPage } from '@/pages/DODetailPage'
 import { CreateDOPage } from '@/pages/CreateDOPage'
+import { PlanningWorkbenchPage } from '@/pages/PlanningWorkbenchPage'
 import { JobsListPage } from '@/pages/JobsListPage'
 import { JobDetailPage } from '@/pages/JobDetailPage'
-import { CreateJobPage } from '@/pages/CreateJobPage'
 import { QueuePage } from '@/pages/QueuePage'
 import { LogQueuePage } from '@/pages/LogQueuePage'
 import { ExpensesPage } from '@/pages/ExpensesPage'
@@ -17,6 +17,8 @@ import { LogExpensePage } from '@/pages/LogExpensePage'
 import { DeliveriesPage } from '@/pages/DeliveriesPage'
 import { LogDeliveryPage } from '@/pages/LogDeliveryPage'
 import { ReportsPage } from '@/pages/ReportsPage'
+import { ReconciliationPage } from '@/pages/ReconciliationPage'
+import { AuditTrailPage } from '@/pages/AuditTrailPage'
 import { MasterDataPage } from '@/pages/MasterDataPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
@@ -47,8 +49,10 @@ export default function App() {
           <Route path="dos"            element={<DOListPage />} />
           <Route path="dos/new"        element={<CreateDOPage />} />
           <Route path="dos/:id"        element={<DODetailPage />} />
+          <Route path="planning"       element={<PlanningWorkbenchPage />} />
           <Route path="jobs"           element={<JobsListPage />} />
-          <Route path="jobs/new"       element={<CreateJobPage />} />
+          {/* Jobs are only ever created via Planning Workbench (a job must be tied to a DO) */}
+          <Route path="jobs/new"       element={<Navigate to="/planning" replace />} />
           <Route path="jobs/:id"       element={<JobDetailPage />} />
           <Route path="queue"          element={<QueuePage />} />
           <Route path="queue/log"      element={<LogQueuePage />} />
@@ -57,6 +61,8 @@ export default function App() {
           <Route path="deliveries"     element={<DeliveriesPage />} />
           <Route path="deliveries/log" element={<LogDeliveryPage />} />
           <Route path="reports"        element={<ReportsPage />} />
+          <Route path="reconciliation" element={<ReconciliationPage />} />
+          <Route path="audit"          element={<AuditTrailPage />} />
           <Route path="master"         element={<MasterDataPage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
