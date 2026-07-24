@@ -179,7 +179,7 @@ export const apiGetJobs = async () => {
       planned_delivery_date, status, created_at, updated_at, assigned_agent_id,
       do:delivery_orders(id,do_number,source_service_centre:service_centres(id,name,city)),
       customer:customers(id,name,city),
-      assigned_agent:profiles(id,full_name,role)`)
+      assigned_agent:profiles!jobs_assigned_agent_id_fkey(id,full_name,role)`)
     .order('created_at', { ascending: false })
   if (error) throw error; return data ?? []
 }
@@ -187,7 +187,7 @@ export const apiGetJob = async (id: string) => {
   const { data, error } = await supabase
     .from('jobs')
     .select(`*, do:delivery_orders(*, supplier:suppliers(*), source_service_centre:service_centres(*), items:do_items(*)),
-      customer:customers(*), assigned_agent:profiles(id,full_name,role,phone),
+      customer:customers(*), assigned_agent:profiles!jobs_assigned_agent_id_fkey(id,full_name,role,phone),
       queue_updates(*), expenses(*), deliveries(*)`)
     .eq('id', id).single()
   if (error) throw error; return data

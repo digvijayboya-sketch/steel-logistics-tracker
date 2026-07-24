@@ -106,7 +106,7 @@ export const DODetailPage = () => {
 
     const { data: jobRows } = await supabase
       .from('jobs')
-      .select(`id, job_number, status, delivery_destination, assigned_agent:profiles(id,full_name)`)
+      .select(`id, job_number, status, delivery_destination, assigned_agent:profiles!jobs_assigned_agent_id_fkey(id,full_name)`)
       .eq('do_id', id)
     setLinkedJobs(jobRows ?? [])
     setLoading(false)
