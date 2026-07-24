@@ -10,12 +10,12 @@ import { useDataStore } from '@/store/dataStore'
 import { supabase } from '@/lib/supabase'
 import { Card } from '@/components/ui/Card'
 import { JobStatusBadge, ExpenseStatusBadge } from '@/components/ui/StatusBadge'
-import { formatINR, formatDate, formatDateTime } from '@/lib/utils'
+import { formatINR, formatDate, formatDateTime, getCoords } from '@/lib/utils'
 import { toast as sonnerToast } from 'sonner'
 import {
   ArrowLeft, Briefcase, MapPin, Calendar, User, Package, ClipboardList,
   Clock, CheckCircle2, Receipt, Truck, AlertTriangle, Building2,
-  XCircle, Loader2, PlusCircle, LogIn, Pencil, History,
+  XCircle, Loader2, PlusCircle, LogIn, Pencil, History, PlayCircle, PackageCheck,
 } from 'lucide-react'
 import {
   SERVICE_TYPE_LABELS, EXPENSE_CATEGORY_LABELS, SETTLEMENT_LABELS, JOB_STATUS_LABELS,
@@ -89,6 +89,7 @@ export const JobDetailPage = () => {
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState('')
   const [revisionCount, setRevisionCount] = useState(0)
+  const [statusBusy, setStatusBusy] = useState(false)
   const [editing, setEditing] = useState(false)
   const [savingPlan, setSavingPlan] = useState(false)
   const [editForm, setEditForm] = useState({
@@ -183,6 +184,59 @@ export const JobDetailPage = () => {
     } catch (e: unknown) {
       sonnerToast.error(e instanceof Error ? e.message : 'Failed to update plan')
     } finally { setSavingPlan(false) }
+  }
+
+  // Agents are non-technical field staff — status updates should be one tap, not a form.
+  // The SC + service type are already known from planning, so "Mark Queued" needs no input at all.
+  const latestQueueEntry = (job?.queue_updates ?? [])
+    .slice()
+    .sort((a: any, b: any) => new Date(b.checkin_time).getTime() - new Date(a.checkin_time).getTime())[0]
+
+  const writeStatusAudit = async (newStatus: string) =>
+    supabase.from('audit_log').insert({
+      entity: 'jobs', entity_id: id, field: 'status',
+      old_value: job.status, new_value: newStatus, changed_by: user?.id ?? '',
+    })
+
+  const handleMarkQueued = async () => {
+    const scId = job.do?.source_service_centre?.id
+    if (!scId) { sonnerToast.error('This DO has no source service centre set — use the full check-in form instead'); return }
+    setStatusBusy(true)
+    try {
+      const coords = await getCoords()
+      const { error: qErr } = await supabase.from('queue_updates').insert({
+        job_id: id, service_centre_id: scId, service_type: job.service_type,
+        checkin_time: new Date().toISOString(), gps_lat: coords.lat, gps_lng: coords.lng,
+        logged_by: job.assigned_agent?.id ?? user?.id ?? '',
+      })
+      if (qErr) throw qErr
+      const { error: sErr } = await supabase.from('jobs').update({ status: 'at_service_centre' }).eq('id', id)
+      if (sErr) throw sErr
+      await writeStatusAudit('at_service_centre')
+      sonnerToast.success('Marked as queued at service centre')
+      await fetchJob()
+    } catch (e: unknown) {
+      sonnerToast.error(e instanceof Error ? e.message : 'Failed to update status')
+    } finally { setStatusBusy(false) }
+  }
+
+  const handleAdvanceProcessing = async (newStatus: 'processing' | 'processing_done') => {
+    setStatusBusy(true)
+    try {
+      const { error } = await supabase.from('jobs').update({ status: newStatus }).eq('id', id)
+      if (error) throw error
+      await writeStatusAudit(newStatus)
+      if (latestQueueEntry) {
+        const patch = newStatus === 'processing'
+          ? { processing_started_at: new Date().toISOString() }
+          : { processing_completed_at: new Date().toISOString() }
+        await supabase.from('queue_updates').update(patch).eq('id', latestQueueEntry.id)
+      }
+      sonnerToast.success(newStatus === 'processing' ? 'Marked as partially processed' : 'Marked processing complete — ready to dispatch')
+      await fetchJob()
+    } catch (e: unknown) {
+      sonnerToast.error(e instanceof Error ? e.message : 'Failed to update status')
+    } finally { setStatusBusy(false) }
   }
 
   const handleCancelJob = async () => {
@@ -336,21 +390,45 @@ export const JobDetailPage = () => {
         </Card>
       )}
 
-      {/* Quick actions — pre-fills the job on the target log form */}
+      {/* Quick actions — one-tap status updates; only the final delivery still needs a form (photo/address) */}
       {canLogAction && (
-        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-          <button onClick={() => navigate(`/expenses/log?job=${job.id}`)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', borderRadius: '0.6rem', border: '1px solid var(--gb)', background: 'var(--g2)', color: 'var(--tx2)', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
-            <PlusCircle size={14} /> Add Expense
-          </button>
-          <button onClick={() => navigate(`/queue/log?job=${job.id}`)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', borderRadius: '0.6rem', border: '1px solid var(--gb)', background: 'var(--g2)', color: 'var(--tx2)', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
-            <LogIn size={14} /> Check In at SC
-          </button>
-          <button onClick={() => navigate(`/deliveries/log?job=${job.id}`)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', borderRadius: '0.6rem', border: 'none', background: 'linear-gradient(135deg,#2dd4bf,#0d9488)', color: '#07211e', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
-            <Truck size={14} /> Log Delivery
-          </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+            {(job.status === 'assigned' || job.status === 'acknowledged') && (
+              <button onClick={handleMarkQueued} disabled={statusBusy}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', borderRadius: '0.6rem', border: 'none', background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: statusBusy ? 'not-allowed' : 'pointer', opacity: statusBusy ? 0.65 : 1 }}>
+                {statusBusy ? <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> : <LogIn size={14} />} Mark Queued at SC
+              </button>
+            )}
+            {job.status === 'at_service_centre' && (
+              <button onClick={() => handleAdvanceProcessing('processing')} disabled={statusBusy}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', borderRadius: '0.6rem', border: 'none', background: 'linear-gradient(135deg,#fbbf24,#d97706)', color: '#1c1400', fontWeight: 700, fontSize: '0.82rem', cursor: statusBusy ? 'not-allowed' : 'pointer', opacity: statusBusy ? 0.65 : 1 }}>
+                {statusBusy ? <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> : <PlayCircle size={14} />} Mark Partially Processed
+              </button>
+            )}
+            {job.status === 'processing' && (
+              <button onClick={() => handleAdvanceProcessing('processing_done')} disabled={statusBusy}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', borderRadius: '0.6rem', border: 'none', background: 'linear-gradient(135deg,#34d399,#059669)', color: '#07211e', fontWeight: 700, fontSize: '0.82rem', cursor: statusBusy ? 'not-allowed' : 'pointer', opacity: statusBusy ? 0.65 : 1 }}>
+                {statusBusy ? <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> : <PackageCheck size={14} />} Mark Processing Complete
+              </button>
+            )}
+            {job.status === 'processing_done' && (
+              <button onClick={() => navigate(`/deliveries/log?job=${job.id}`)}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', borderRadius: '0.6rem', border: 'none', background: 'linear-gradient(135deg,#2dd4bf,#0d9488)', color: '#07211e', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+                <Truck size={14} /> Log Delivery
+              </button>
+            )}
+            <button onClick={() => navigate(`/expenses/log?job=${job.id}`)}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', borderRadius: '0.6rem', border: '1px solid var(--gb)', background: 'var(--g2)', color: 'var(--tx2)', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+              <PlusCircle size={14} /> Add Expense
+            </button>
+          </div>
+          {(isAdmin || isPlanner) && (job.status === 'assigned' || job.status === 'acknowledged') && (
+            <button onClick={() => navigate(`/queue/log?job=${job.id}`)}
+              style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: 'var(--tx4)', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+              Need a different service centre or extra details? Use the full check-in form →
+            </button>
+          )}
         </div>
       )}
 

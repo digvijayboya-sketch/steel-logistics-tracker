@@ -212,7 +212,7 @@ export const JobsListPage = () => {
                   const color = JOB_COLORS[j.status]
                   const isCancelled = j.status === 'cancelled'
                   const isDone = j.status === 'processing_done'
-                  const canQueue = ['assigned', 'acknowledged'].includes(j.status)
+                  const canQueue = ['assigned', 'acknowledged', 'at_service_centre', 'processing'].includes(j.status)
                   return (
                     <tr key={j.id} style={{ opacity: isCancelled ? 0.5 : 1 }}>
                       <td>
@@ -247,10 +247,10 @@ export const JobsListPage = () => {
                           {/* Suppress action buttons for cancelled jobs */}
                           {!isCancelled && canQueue && (isAgent || isAdmin || isPlanner) && (
                             <button
-                              onClick={() => navigate(`/queue/log?job=${j.id}`)}
+                              onClick={() => navigate(`/jobs/${j.id}`)}
                               style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.3rem 0.7rem', borderRadius: '0.45rem', border: 'none', background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', color: '#fff', fontWeight: 700, fontSize: '0.73rem', cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(124,58,237,0.25)' }}
                             >
-                              + Queue
+                              Update Status
                             </button>
                           )}
                           {!isCancelled && isDone && (
