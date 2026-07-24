@@ -9,11 +9,22 @@ import { useRole } from '@/hooks/useRole'
 import { supabase } from '@/lib/supabase'
 import { DO_STATUS_LABELS, JOB_STATUS_LABELS } from '@/types'
 import type { DOStatus, JobStatus } from '@/types'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatDateTime } from '@/lib/utils'
 import {
   ClipboardList, ChevronLeft, Package, User, ChevronRight,
-  XCircle, Trash2, AlertTriangle, Loader2, Scale,
+  XCircle, Trash2, AlertTriangle, Loader2, Scale, History,
+  Factory, Receipt, Truck, MapPin, ArrowRight,
 } from 'lucide-react'
+
+type TimelineEvent = {
+  id: string
+  at: string
+  color: string
+  icon: React.ElementType
+  label: string
+  detail: string
+  actor?: string
+}
 
 const DO_COLORS: Record<DOStatus, string> = {
   draft: '#94a3b8', active: '#60a5fa', partially_dispatched: '#fbbf24',
@@ -71,6 +82,8 @@ export const DODetailPage = () => {
   const [linkedJobs, setLinkedJobs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([])
+  const [timelineLoading, setTimelineLoading] = useState(false)
 
   // cancel / delete modal state
   const [modal, setModal] = useState<'cancel' | 'delete' | null>(null)
@@ -97,6 +110,87 @@ export const DODetailPage = () => {
       .eq('do_id', id)
     setLinkedJobs(jobRows ?? [])
     setLoading(false)
+    fetchTimeline(id ?? '', jobRows ?? [])
+  }
+
+  // Merges 4 sources into one chronological feed: audit_log (DO + its jobs),
+  // queue_updates, expenses, deliveries. audit_log SELECT is RLS-restricted to
+  // admin/planner — for other roles that query just returns fewer rows, not an error.
+  const fetchTimeline = async (doId: string, jobRowsForTimeline: any[]) => {
+    setTimelineLoading(true)
+    const events: TimelineEvent[] = []
+    const jobIds = jobRowsForTimeline.map(j => j.id)
+    const jobNoOf = (jid: string) => jobRowsForTimeline.find(j => j.id === jid)?.job_number ?? jid.slice(0, 8)
+
+    const { data: doAudit } = await supabase
+      .from('audit_log')
+      .select('id, field, old_value, new_value, changed_at, changed_by_profile:profiles!audit_log_changed_by_fkey(full_name)')
+      .eq('entity', 'delivery_orders').eq('entity_id', doId)
+    for (const a of doAudit ?? []) {
+      events.push({ id: `audit-do-${a.id}`, at: a.changed_at, color: '#a78bfa', icon: History,
+        label: `DO ${a.field} changed`, detail: `${a.old_value || '—'} → ${a.new_value || '—'}`,
+        actor: (a.changed_by_profile as any)?.full_name })
+    }
+
+    if (jobIds.length > 0) {
+      const { data: jobAudit } = await supabase
+        .from('audit_log')
+        .select('id, entity_id, field, old_value, new_value, changed_at, changed_by_profile:profiles!audit_log_changed_by_fkey(full_name)')
+        .eq('entity', 'jobs').in('entity_id', jobIds)
+      for (const a of jobAudit ?? []) {
+        events.push({ id: `audit-job-${a.id}`, at: a.changed_at, color: '#60a5fa', icon: History,
+          label: `Job ${jobNoOf(a.entity_id)} ${a.field} changed`, detail: `${a.old_value || '—'} → ${a.new_value || '—'}`,
+          actor: (a.changed_by_profile as any)?.full_name })
+      }
+
+      const { data: queueRows } = await supabase
+        .from('queue_updates')
+        .select('id, job_id, checkin_time, processing_completed_at, queue_number, service_centre:service_centres(name), logged_by_profile:profiles!queue_updates_logged_by_fkey(full_name)')
+        .in('job_id', jobIds)
+      for (const q of queueRows ?? []) {
+        events.push({ id: `queue-${q.id}`, at: q.checkin_time, color: '#fbbf24', icon: Factory,
+          label: `SC check-in — ${jobNoOf(q.job_id)}`,
+          detail: `${(q.service_centre as any)?.name ?? '—'}${q.queue_number ? ` · Queue #${q.queue_number}` : ''}`,
+          actor: (q.logged_by_profile as any)?.full_name })
+        if (q.processing_completed_at) {
+          events.push({ id: `queue-done-${q.id}`, at: q.processing_completed_at, color: '#34d399', icon: Factory,
+            label: `Processing complete — ${jobNoOf(q.job_id)}`, detail: (q.service_centre as any)?.name ?? '—' })
+        }
+      }
+
+      const { data: expenseRows } = await supabase
+        .from('expenses')
+        .select('id, job_id, category, amount_inr, status, created_at, reviewed_at, logged_by_profile:profiles!expenses_logged_by_fkey(full_name)')
+        .in('job_id', jobIds)
+      for (const e of expenseRows ?? []) {
+        events.push({ id: `expense-${e.id}`, at: e.created_at, color: '#fbbf24', icon: Receipt,
+          label: `Expense logged — ${jobNoOf(e.job_id)}`, detail: `${e.category} · ₹${Number(e.amount_inr).toLocaleString('en-IN')}`,
+          actor: (e.logged_by_profile as any)?.full_name })
+        if (e.status !== 'pending' && e.reviewed_at) {
+          events.push({ id: `expense-review-${e.id}`, at: e.reviewed_at, color: e.status === 'approved' ? '#34d399' : '#f87171', icon: Receipt,
+            label: `Expense ${e.status} — ${jobNoOf(e.job_id)}`, detail: `${e.category} · ₹${Number(e.amount_inr).toLocaleString('en-IN')}` })
+        }
+      }
+
+      const { data: deliveryRows } = await supabase
+        .from('deliveries')
+        .select('id, job_id, delivery_status, customer_name, delivered_at, created_at, destination_changed, old_destination, new_destination, authorised_by_office, created_by_profile:profiles!deliveries_created_by_fkey(full_name)')
+        .in('job_id', jobIds)
+      for (const d of deliveryRows ?? []) {
+        events.push({ id: `delivery-${d.id}`, at: d.delivered_at, color: '#2dd4bf', icon: Truck,
+          label: `Delivery recorded — ${jobNoOf(d.job_id)}`, detail: `${d.delivery_status} · ${d.customer_name}`,
+          actor: (d.created_by_profile as any)?.full_name })
+        if (d.destination_changed) {
+          events.push({ id: `dest-change-${d.id}`, at: d.created_at, color: '#fb923c', icon: MapPin,
+            label: `Destination changed — ${jobNoOf(d.job_id)}`,
+            detail: `${d.old_destination ?? '—'} → ${d.new_destination ?? '—'} (${d.authorised_by_office ? 'office-authorised' : 'self-authorised'})` })
+        }
+      }
+    }
+
+    events.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+    setTimeline(events)
+    setTimelineLoading(false)
   }
 
   useEffect(() => { fetchData() }, [id])
@@ -309,6 +403,48 @@ export const DODetailPage = () => {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Timeline */}
+      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', overflow: 'hidden', boxShadow: 'var(--sh-card)', marginTop: '1.25rem' }}>
+        <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--gb)', fontWeight: 700, fontSize: '0.88rem', color: 'var(--tx1)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <History size={14} style={{ color: 'var(--accent)' }} /> Timeline
+        </div>
+        {timelineLoading ? (
+          <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--tx4)', fontSize: '0.84rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+            <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> Loading timeline…
+          </div>
+        ) : timeline.length === 0 ? (
+          <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--tx4)', fontSize: '0.84rem' }}>
+            No activity recorded yet.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {timeline.map(ev => {
+              const Icon = ev.icon
+              return (
+                <div key={ev.id} style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--gb)', display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: `${ev.color}22`, border: `1px solid ${ev.color}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
+                    <Icon size={13} style={{ color: ev.color }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 700, fontSize: '0.84rem', color: 'var(--tx1)' }}>{ev.label}</span>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--tx4)', whiteSpace: 'nowrap' }}>{formatDateTime(ev.at)}</span>
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--tx3)', marginTop: 2, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <ArrowRight size={10} style={{ opacity: 0.5, flexShrink: 0 }} />
+                      <span>{ev.detail}</span>
+                    </div>
+                    {ev.actor && (
+                      <div style={{ fontSize: '0.72rem', color: 'var(--tx4)', marginTop: 2 }}>by {ev.actor}</div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

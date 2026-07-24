@@ -11,7 +11,7 @@ const COIL_GRADES = [
   'GP Zero Spangle','GP Regular Spangle','HR IS2062 E250','HR IS2062 E350',
 ]
 
-const DO_PREFIX = `DO-2026-${String(Math.floor(Math.random()*900)+100)}`
+const genDoNumber = () => `DO-2026-${Date.now().toString().slice(-6)}`
 
 const inp: React.CSSProperties = {
   width:'100%', padding:'0.55rem 0.75rem', borderRadius:'0.55rem',
@@ -35,12 +35,12 @@ export const CreateDOPage = () => {
   useEffect(() => { fetchLookups() }, [])
 
   const [step, setStep] = useState<1|2|3>(1)
-  const [form, setForm] = useState({
-    do_number: DO_PREFIX,
+  const [form, setForm] = useState(() => ({
+    do_number: genDoNumber(),
     supplier_id: '',
     source_service_centre_id: '',
     expected_collection_date: '',
-  })
+  }))
   const [items, setItems] = useState<Omit<DeliveryOrderItem,'id'>[]>([
     { coil_grade:'', thickness_mm:0, width_mm:0, quantity:1, weight_mt:0 },
   ])
@@ -108,7 +108,13 @@ export const CreateDOPage = () => {
       toast.success(`DO ${form.do_number} ${activate ? 'created and activated' : 'saved as draft'}`)
       navigate(`/dos/${id}`)
     } catch(e:unknown) {
-      toast.error(e instanceof Error ? e.message : 'Failed to create DO')
+      const code = (e as { code?: string })?.code
+      if (code === '23505') {
+        toast.error(`DO number "${form.do_number}" is already in use — please pick a different one`)
+        setStep(1)
+      } else {
+        toast.error(e instanceof Error ? e.message : 'Failed to create DO')
+      }
     } finally { setSubmitting(false) }
   }
 
