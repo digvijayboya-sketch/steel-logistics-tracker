@@ -74,7 +74,7 @@ const ConfirmModal = ({
 
 // ── Page ───────────────────────────────────────────────────────────────
 export const DODetailPage = () => {
-  const { id } = useParams()
+  const { id = '' } = useParams()
   const navigate = useNavigate()
   const { isPlanner, isAdmin } = useRole()
 

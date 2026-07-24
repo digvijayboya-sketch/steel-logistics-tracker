@@ -12,7 +12,7 @@
  *   do-documents    (private, 20 MB, pdf/image)
  */
 import { supabase } from './supabase'
-import type { DOStatus, JobStatus, ExpenseStatus, ServiceTypeDB } from './database.types'
+import type { DOStatus, JobStatus, ExpenseStatus, ServiceTypeDB, UserRole, ExpenseCategory, SettlementMethod, DeliveryStatus } from './database.types'
 
 // ── Auth ──────────────────────────────────────────────────────
 export const apiSignIn = (email: string, password: string) =>
@@ -73,7 +73,7 @@ export const apiCreateServiceCentre = async (p: { name: string; city?: string })
   if (error) throw error; return data
 }
 export const apiUpdateServiceCentre = async (id: string, p: { name?: string; city?: string }) => {
-  const updates: Record<string, string> = {}
+  const updates: { name?: string; city?: string } = {}
   if (p.name !== undefined) updates.name = p.name
   if (p.city !== undefined) updates.city = p.city
   const { data, error } = await supabase.from('service_centres').update(updates).eq('id', id).select('id, name, city').single()
@@ -95,7 +95,7 @@ export const apiCreateCustomer = async (p: { name: string; city?: string }) => {
   if (error) throw error; return data
 }
 export const apiUpdateCustomer = async (id: string, p: { name?: string; city?: string }) => {
-  const updates: Record<string, string> = {}
+  const updates: { name?: string; city?: string } = {}
   if (p.name !== undefined) updates.name = p.name
   if (p.city !== undefined) updates.city = p.city
   const { data, error } = await supabase.from('customers').update(updates).eq('id', id).select('id, name, city').single()
@@ -118,12 +118,12 @@ export const apiGetAllProfiles = async () => {
     .from('profiles').select('id, full_name, role, phone, created_at').order('full_name')
   if (error) throw error; return data ?? []
 }
-export const apiUpdateUserRole = async (id: string, role: string) => {
+export const apiUpdateUserRole = async (id: string, role: UserRole) => {
   const { data, error } = await supabase.from('profiles').update({ role }).eq('id', id).select('id, full_name, role, phone, created_at').single()
   if (error) throw error; return data
 }
 export const apiUpdateUserProfile = async (id: string, patch: { full_name?: string; phone?: string }) => {
-  const updates: Record<string, string> = {}
+  const updates: { full_name?: string; phone?: string } = {}
   if (patch.full_name !== undefined) updates.full_name = patch.full_name
   if (patch.phone    !== undefined) updates.phone     = patch.phone
   const { data, error } = await supabase.from('profiles').update(updates).eq('id', id).select('id, full_name, role, phone, created_at').single()
@@ -246,8 +246,8 @@ export const apiGetExpenses = async () => {
   if (error) throw error; return data ?? []
 }
 export const apiAddExpense = async (payload: {
-  job_id: string; category: string; amount_inr: number; payee_description: string
-  settlement_method: string; photo_url?: string; gps_lat?: number; gps_lng?: number; logged_by: string
+  job_id: string; category: ExpenseCategory; amount_inr: number; payee_description: string
+  settlement_method: SettlementMethod; photo_url?: string; gps_lat?: number; gps_lng?: number; logged_by: string
   created_at?: string
 }) => {
   const { data, error } = await supabase.from('expenses').insert(payload).select().single()
@@ -277,7 +277,7 @@ export const apiAuthoriseDelivery = async (id: string) => {
 }
 export const apiAddDelivery = async (payload: {
   job_id: string; customer_name: string; delivery_address: string; vehicle_number: string
-  delivered_at: string; delivery_status?: string; unloaded_photo_url?: string
+  delivered_at: string; delivery_status?: DeliveryStatus; unloaded_photo_url?: string
   final_lat?: number; final_lng?: number; destination_changed?: boolean
   old_destination?: string; new_destination?: string; change_reason?: string
   partial_reason?: string; authorised_by_office?: boolean; created_by: string
@@ -345,5 +345,6 @@ const apiWriteAudit = async (entry: {
   entity: string; entity_id: string; field: string
   old_value?: string; new_value?: string; changed_by: string
 }) => {
-  await supabase.from('audit_log').insert(entry).catch(console.warn)
+  const { error } = await supabase.from('audit_log').insert(entry)
+  if (error) console.warn(error)
 }

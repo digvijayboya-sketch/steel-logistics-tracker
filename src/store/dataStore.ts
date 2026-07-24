@@ -304,7 +304,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   updateUserRole: async (id, role) => {
-    await apiUpdateUserRole(id, role)
+    await apiUpdateUserRole(id, role as NonNullable<Profile['role']>)
     set(s => ({ allProfiles: s.allProfiles.map(p => p.id === id ? { ...p, role: role as Profile['role'] } : p) }))
   },
   updateUserProfile: async (id, patch) => {

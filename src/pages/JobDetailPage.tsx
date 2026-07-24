@@ -18,7 +18,7 @@ import {
 import {
   SERVICE_TYPE_LABELS, EXPENSE_CATEGORY_LABELS, SETTLEMENT_LABELS, JOB_STATUS_LABELS,
 } from '@/types'
-import type { ServiceType, JobStatus, ExpenseStatus } from '@/types'
+import type { ServiceType, JobStatus, ExpenseStatus, ExpenseCategory, SettlementMethod } from '@/types'
 
 const inp: React.CSSProperties = {
   width:'100%', padding:'0.5rem 0.7rem', borderRadius:'0.5rem',
@@ -106,7 +106,7 @@ const ConfirmModal = ({
 )
 
 export const JobDetailPage = () => {
-  const { id } = useParams()
+  const { id = '' } = useParams()
   const navigate = useNavigate()
   const { isAdmin, isPlanner, isAgent, user } = useRole()
   const { customers, profiles, fetchLookups } = useDataStore()
@@ -198,7 +198,7 @@ export const JobDetailPage = () => {
     setSavingPlan(true)
     try {
       const patch = Object.fromEntries(changed.map(f => [f, (editForm as Record<string, string>)[f] || null]))
-      const { error } = await supabase.from('jobs').update(patch).eq('id', id)
+      const { error } = await supabase.from('jobs').update(patch as never).eq('id', id)
       if (error) throw error
       await supabase.from('audit_log').insert(changed.map(f => ({
         entity: 'jobs', entity_id: id, field: `plan_${f}`,
@@ -506,7 +506,7 @@ export const JobDetailPage = () => {
         {/* Job details */}
         <div style={card}>
           <SectionHeader icon={Briefcase} title="Job Details" />
-          <FieldRow label="Service Type" value={SERVICE_TYPE_LABELS[job.service_type]} />
+          <FieldRow label="Service Type" value={SERVICE_TYPE_LABELS[job.service_type as ServiceType]} />
           <FieldRow label="Packing Type" value={job.packing_type ?? '—'} />
           <FieldRow label="Planned Delivery" value={formatDate(job.planned_delivery_date)} />
           <FieldRow label="Agent" value={job.assigned_agent?.full_name ?? 'Unassigned'} />
@@ -558,7 +558,7 @@ export const JobDetailPage = () => {
                     <div>
                       <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--tx1)' }}>{q.service_centre?.name}</div>
                       <div style={{ fontSize: '0.74rem', color: 'var(--tx3)', marginTop: 2 }}>
-                        {SERVICE_TYPE_LABELS[q.service_type]} · Queue #{q.queue_number ?? 'N/A'}
+                        {SERVICE_TYPE_LABELS[q.service_type as ServiceType]} · Queue #{q.queue_number ?? 'N/A'}
                       </div>
                     </div>
                     <Pill label={stageLabel} color={stageColor} />
@@ -598,11 +598,11 @@ export const JobDetailPage = () => {
               <div key={e.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', padding: '0.65rem 0.85rem', borderRadius: '0.55rem', border: '1px solid var(--gb)', background: 'var(--g1)' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tx1)' }}>{EXPENSE_CATEGORY_LABELS[e.category]}</span>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tx1)' }}>{EXPENSE_CATEGORY_LABELS[e.category as ExpenseCategory]}</span>
                     <Pill label={e.status} color={EXPENSE_COLORS[e.status as ExpenseStatus] ?? '#94a3b8'} />
                   </div>
                   <div style={{ fontSize: '0.76rem', color: 'var(--tx3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.payee_description}</div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--tx4)', marginTop: 1 }}>{SETTLEMENT_LABELS[e.settlement_method]}</div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--tx4)', marginTop: 1 }}>{SETTLEMENT_LABELS[e.settlement_method as SettlementMethod]}</div>
                 </div>
                 <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--tx1)', flexShrink: 0 }}>{formatINR(Number(e.amount_inr))}</div>
               </div>

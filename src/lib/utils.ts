@@ -1,8 +1,8 @@
 export const cls = (...parts:(string | false | null | undefined)[]) => parts.filter(Boolean).join(' ')
 
 export const formatINR = (n:number) => new Intl.NumberFormat('en-IN', { style:'currency', currency:'INR', maximumFractionDigits:0 }).format(n)
-export const formatDate = (s?:string) => s ? new Date(s).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—'
-export const formatDateTime = (s?:string) => s ? new Date(s).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'
+export const formatDate = (s?:string|null) => s ? new Date(s).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—'
+export const formatDateTime = (s?:string|null) => s ? new Date(s).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'
 
 export const downloadCSV = (filename: string, headers: string[], rows: (string | number)[][]) => {
   const esc = (v: string | number) => {
