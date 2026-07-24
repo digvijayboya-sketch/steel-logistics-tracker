@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuthStore } from '@/store/appStore'
 import { useDataStore } from '@/store/dataStore'
 import { formatDate } from '@/lib/utils'
 import { Plus, Clock, CheckCircle2, PlayCircle, AlertTriangle, Loader2 } from 'lucide-react'
@@ -13,7 +14,8 @@ const PageShell = ({ children }: { children: React.ReactNode }) => (
 
 export const QueuePage = () => {
   const navigate = useNavigate()
-  const { queueUpdates, jobs, loading, error, fetchQueueUpdates, fetchJobs, updateQueueEntry } = useDataStore()
+  const { user } = useAuthStore()
+  const { queueUpdates, jobs, loading, error, fetchQueueUpdates, fetchJobs, updateQueueEntry, updateJobStatus } = useDataStore()
 
   useEffect(() => { fetchQueueUpdates(); fetchJobs() }, [])
 
@@ -36,16 +38,17 @@ export const QueuePage = () => {
     return '#60a5fa'
   }
   const stageLabel = (q: typeof queueUpdates[0]) => {
-    if (q.processing_completed_at) return 'Done'
-    if (q.processing_started_at)   return 'Processing'
-    return 'In Queue'
+    if (q.processing_completed_at) return 'Complete'
+    if (q.processing_started_at)   return 'Partial'
+    return 'Queued'
   }
 
-  const handleStart = async (id: string) => {
+  const handleStart = async (id: string, jobId: string) => {
     setBusyId(id)
     try {
       await updateQueueEntry(id, { processing_started_at: new Date().toISOString() })
-      toast.success('Marked as processing')
+      await updateJobStatus(jobId, 'processing', user?.id ?? '')
+      toast.success('Marked as partially processed')
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to update')
     } finally { setBusyId(null) }
@@ -55,6 +58,8 @@ export const QueuePage = () => {
     setBusyId(id)
     try {
       await updateQueueEntry(id, { processing_completed_at: new Date().toISOString() })
+      await updateJobStatus(jobId, 'processing_done', user?.id ?? '')
+      toast.success('Marked processing complete — ready to dispatch')
       navigate(`/deliveries/log?job=${jobId}`)
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to update')
@@ -125,21 +130,21 @@ export const QueuePage = () => {
                       {!isDone && (
                         <div style={{ display: 'flex', gap: '0.4rem' }}>
                           {!isProcessing && (
-                            <button disabled={isBusy} onClick={() => handleStart(q.id)}
+                            <button disabled={isBusy} onClick={() => handleStart(q.id, q.job_id)}
                               style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', padding: '0.3rem 0', borderRadius: '0.4rem', border: '1px solid rgba(251,191,36,0.35)', background: 'rgba(251,191,36,0.1)', color: '#fbbf24', fontWeight: 700, fontSize: '0.72rem', cursor: isBusy ? 'not-allowed' : 'pointer', opacity: isBusy ? 0.6 : 1 }}>
-                              <PlayCircle size={11} /> Start
+                              <PlayCircle size={11} /> Mark Partial
                             </button>
                           )}
                           <button disabled={isBusy} onClick={() => handleMarkDone(q.id, q.job_id)}
                             style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', padding: '0.3rem 0', borderRadius: '0.4rem', border: '1px solid rgba(52,211,153,0.35)', background: 'rgba(52,211,153,0.1)', color: '#34d399', fontWeight: 700, fontSize: '0.72rem', cursor: isBusy ? 'not-allowed' : 'pointer', opacity: isBusy ? 0.6 : 1 }}
                           >
-                            <CheckCircle2 size={11} /> Mark Done
+                            <CheckCircle2 size={11} /> Mark Complete
                           </button>
                         </div>
                       )}
                       {isDone && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.72rem', color: '#34d399', fontWeight: 600 }}>
-                          <CheckCircle2 size={11} /> Processing complete
+                          <CheckCircle2 size={11} /> Processing complete — ready to dispatch
                         </div>
                       )}
                     </div>
