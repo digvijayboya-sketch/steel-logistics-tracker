@@ -105,34 +105,38 @@ export const DODetailPage = () => {
   const handleCancel = async () => {
     setBusy(true)
     try {
-      // Cancel all non-terminal linked jobs
+      // Cancel the DO first — if this fails, no jobs get cancelled as an inconsistent side effect
+      const { error: doErr } = await supabase.from('delivery_orders').update({ status: 'cancelled' }).eq('id', id)
+      if (doErr) throw doErr
+
       const cancelableJobs = linkedJobs.filter(j => !['delivered', 'cancelled'].includes(j.status))
       if (cancelableJobs.length > 0) {
-        await supabase.from('jobs')
+        const { error: jobsErr } = await supabase.from('jobs')
           .update({ status: 'cancelled' })
           .in('id', cancelableJobs.map(j => j.id))
+        if (jobsErr) throw jobsErr
       }
-      // Cancel the DO
-      await supabase.from('delivery_orders').update({ status: 'cancelled' as any }).eq('id', id)
       setModal(null)
       setToast(`DO cancelled. ${cancelableJobs.length} job(s) also cancelled.`)
       await fetchData()
     } catch (e: any) {
-      setToast('Error: ' + e.message)
+      setToast('Error: ' + (e?.message ?? 'Failed to cancel DO'))
     } finally {
       setBusy(false)
     }
   }
 
-  // ── Hard delete (admin, draft only)
+  // ── Hard delete (admin, draft only). do_items.do_id is ON DELETE CASCADE, so
+  // deleting the DO row alone cleans up its items too.
   const handleDelete = async () => {
     setBusy(true)
     try {
-      await supabase.from('do_items').delete().eq('do_id', id)
-      await supabase.from('delivery_orders').delete().eq('id', id)
+      const { error: doErr, data: deletedRows } = await supabase.from('delivery_orders').delete().eq('id', id).select('id')
+      if (doErr) throw doErr
+      if (!deletedRows || deletedRows.length === 0) throw new Error('Delete was blocked — you may not have permission to delete this DO')
       navigate('/dos', { replace: true })
     } catch (e: any) {
-      setToast('Error: ' + e.message)
+      setToast('Error: ' + (e?.message ?? 'Failed to delete DO'))
       setBusy(false)
     }
   }

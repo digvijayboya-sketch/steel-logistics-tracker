@@ -232,6 +232,15 @@ export const useDataStore = create<DataState>((set, get) => ({
   updateJobStatus: async (id, status, uid) => {
     await apiUpdateJobStatus(id, status, uid)
     set(s => ({ jobs: s.jobs.map(j => j.id === id ? { ...j, status } : j) }))
+    // A DO only advances from 'active' to 'partially_dispatched' once a job actually
+    // dispatches (leaves the SC toward the customer) — not merely when planned/assigned.
+    if (status === 'in_transit_to_customer') {
+      const doId = get().jobs.find(j => j.id === id)?.do?.id
+      const linkedDO = doId ? get().dos.find(d => d.id === doId) : undefined
+      if (linkedDO && linkedDO.status === 'active') {
+        await get().updateDOStatus(doId!, 'partially_dispatched', uid).catch(() => {})
+      }
+    }
   },
   addQueueUpdate: async (p) => { await apiAddQueueUpdate(p); await get().fetchQueueUpdates() },
   updateQueueEntry: async (id, p) => {

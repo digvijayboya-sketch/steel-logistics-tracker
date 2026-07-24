@@ -1,5 +1,5 @@
 export type UserRole = 'admin' | 'planner' | 'purchase' | 'agent'
-export type DOStatus = 'draft' | 'active' | 'partially_dispatched' | 'fully_dispatched' | 'closed'
+export type DOStatus = 'draft' | 'active' | 'partially_dispatched' | 'fully_dispatched' | 'closed' | 'cancelled'
 export type JobStatus = 'assigned' | 'acknowledged' | 'at_service_centre' | 'processing' | 'processing_done' | 'in_transit_to_customer' | 'delivered' | 'cancelled'
 export type ServiceType = 'ctl' | 'slitting' | 'packing_only' | 'coil_to_coil'
 export type ExpenseCategory = 'packing_materials' | 'worker_incentive' | 'sc_extra_charge' | 'miscellaneous' | 'fuel' | 'toll' | 'lodging' | 'labour' | 'repair'
@@ -115,7 +115,7 @@ export interface Delivery {
 }
 
 export const DO_STATUS_LABELS: Record<DOStatus, string> = {
-  draft: 'Draft', active: 'Active', partially_dispatched: 'Partially Dispatched', fully_dispatched: 'Fully Dispatched', closed: 'Closed'
+  draft: 'Draft', active: 'Active', partially_dispatched: 'Partially Dispatched', fully_dispatched: 'Fully Dispatched', closed: 'Closed', cancelled: 'Cancelled'
 }
 export const JOB_STATUS_LABELS: Record<JobStatus, string> = {
   assigned: 'Assigned', acknowledged: 'Acknowledged', at_service_centre: 'At Service Centre', processing: 'Processing', processing_done: 'Processing Done', in_transit_to_customer: 'In Transit', delivered: 'Delivered', cancelled: 'Cancelled'

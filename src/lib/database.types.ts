@@ -4,7 +4,7 @@
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[]
 
 export type UserRole         = 'admin' | 'planner' | 'purchase' | 'agent'
-export type DOStatus         = 'draft' | 'active' | 'partially_dispatched' | 'fully_dispatched' | 'closed'
+export type DOStatus         = 'draft' | 'active' | 'partially_dispatched' | 'fully_dispatched' | 'closed' | 'cancelled'
 export type JobStatus        = 'assigned' | 'acknowledged' | 'at_service_centre' | 'processing' | 'processing_done' | 'in_transit_to_customer' | 'delivered' | 'cancelled'
 export type ServiceTypeDB    = 'ctl' | 'slitting' | 'packing_only' | 'coil_to_coil'
 export type ExpenseCategory  = 'packing_materials' | 'worker_incentive' | 'sc_extra_charge' | 'miscellaneous' | 'fuel' | 'toll' | 'lodging' | 'labour' | 'repair'

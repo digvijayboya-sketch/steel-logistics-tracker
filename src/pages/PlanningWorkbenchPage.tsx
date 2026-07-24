@@ -32,7 +32,7 @@ export const PlanningWorkbenchPage = () => {
   const { isAdmin, isPlanner } = useRole()
   const {
     dos, jobs, profiles, customers, loading,
-    fetchDOs, fetchJobs, fetchLookups, createJob, updateDOStatus,
+    fetchDOs, fetchJobs, fetchLookups, createJob,
   } = useDataStore()
 
   useEffect(() => { fetchDOs(); fetchJobs(); fetchLookups() }, [])
@@ -101,9 +101,9 @@ export const PlanningWorkbenchPage = () => {
         processing_instructions: form.processing_instructions || undefined,
         created_by:              user?.id ?? '',
       } as any)
-      if (selectedDO?.status === 'active') {
-        await updateDOStatus(selectedDoId, 'partially_dispatched', user?.id ?? '')
-      }
+      // Note: the DO deliberately stays 'active' here — it only advances to
+      // 'partially_dispatched' once a job actually dispatches (see
+      // dataStore.updateJobStatus), not merely once one is planned/assigned.
       toast.success(`${jobNo} created and assigned`)
       selectDO('')
       await fetchDOs()
