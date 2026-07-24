@@ -6,18 +6,35 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useRole } from '@/hooks/useRole'
+import { useDataStore } from '@/store/dataStore'
 import { supabase } from '@/lib/supabase'
 import { Card } from '@/components/ui/Card'
 import { JobStatusBadge, ExpenseStatusBadge } from '@/components/ui/StatusBadge'
 import { formatINR, formatDate, formatDateTime } from '@/lib/utils'
+import { toast as sonnerToast } from 'sonner'
 import {
   ArrowLeft, Briefcase, MapPin, Calendar, User, Package, ClipboardList,
   Clock, CheckCircle2, Receipt, Truck, AlertTriangle, Building2,
-  XCircle, Loader2, PlusCircle, LogIn,
+  XCircle, Loader2, PlusCircle, LogIn, Pencil, History,
 } from 'lucide-react'
 import {
   SERVICE_TYPE_LABELS, EXPENSE_CATEGORY_LABELS, SETTLEMENT_LABELS, JOB_STATUS_LABELS,
 } from '@/types'
+import type { ServiceType } from '@/types'
+
+const inp: React.CSSProperties = {
+  width:'100%', padding:'0.5rem 0.7rem', borderRadius:'0.5rem',
+  border:'1px solid var(--input-border)', background:'var(--input-bg)',
+  color:'var(--tx1)', fontSize:'0.82rem', outline:'none', boxSizing:'border-box' as const,
+}
+const lbl: React.CSSProperties = {
+  display:'block', fontSize:'0.66rem', fontWeight:700,
+  color:'var(--tx4)', textTransform:'uppercase' as const, letterSpacing:'0.06em', marginBottom:3,
+}
+const PLAN_FIELDS = [
+  'customer_id', 'delivery_destination', 'service_type', 'packing_type',
+  'assigned_agent_id', 'planned_delivery_date', 'processing_instructions',
+] as const
 
 const STEP_STATUSES = [
   'assigned','acknowledged','at_service_centre','processing',
@@ -64,12 +81,30 @@ export const JobDetailPage = () => {
   const { id } = useParams()
   const navigate = useNavigate()
   const { isAdmin, isPlanner, isAgent, user } = useRole()
+  const { customers, profiles, fetchLookups } = useDataStore()
 
   const [job, setJob] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState('')
+  const [revisionCount, setRevisionCount] = useState(0)
+  const [editing, setEditing] = useState(false)
+  const [savingPlan, setSavingPlan] = useState(false)
+  const [editForm, setEditForm] = useState({
+    customer_id: '', delivery_destination: '', service_type: 'ctl' as ServiceType,
+    packing_type: '', assigned_agent_id: '', planned_delivery_date: '', processing_instructions: '',
+  })
+
+  useEffect(() => { fetchLookups() }, [])
+
+  const fetchRevisionCount = async () => {
+    const { count } = await supabase
+      .from('audit_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('entity', 'jobs').eq('entity_id', id).like('field', 'plan_%')
+    setRevisionCount(count ?? 0)
+  }
 
   const fetchJob = async () => {
     setLoading(true)
@@ -99,7 +134,56 @@ export const JobDetailPage = () => {
     setLoading(false)
   }
 
-  useEffect(() => { fetchJob() }, [id])
+  useEffect(() => { fetchJob(); fetchRevisionCount() }, [id])
+
+  const openEdit = () => {
+    if (!job) return
+    setEditForm({
+      customer_id: job.customer?.id ?? '',
+      delivery_destination: job.delivery_destination ?? '',
+      service_type: job.service_type,
+      packing_type: job.packing_type ?? '',
+      assigned_agent_id: job.assigned_agent?.id ?? '',
+      planned_delivery_date: job.planned_delivery_date ?? '',
+      processing_instructions: job.processing_instructions ?? '',
+    })
+    setEditing(true)
+  }
+
+  const currentPlanValues: Record<string, string> = {
+    customer_id: job?.customer?.id ?? '',
+    delivery_destination: job?.delivery_destination ?? '',
+    service_type: job?.service_type ?? '',
+    packing_type: job?.packing_type ?? '',
+    assigned_agent_id: job?.assigned_agent?.id ?? '',
+    planned_delivery_date: job?.planned_delivery_date ?? '',
+    processing_instructions: job?.processing_instructions ?? '',
+  }
+
+  const handleSaveEditPlan = async () => {
+    if (!editForm.customer_id) { sonnerToast.error('Select a customer'); return }
+    if (!editForm.delivery_destination.trim()) { sonnerToast.error('Enter delivery destination'); return }
+    if (!editForm.assigned_agent_id) { sonnerToast.error('Assign an agent'); return }
+    const changed = PLAN_FIELDS.filter(f => (editForm as Record<string, string>)[f] !== currentPlanValues[f])
+    if (changed.length === 0) { setEditing(false); return }
+    setSavingPlan(true)
+    try {
+      const patch = Object.fromEntries(changed.map(f => [f, (editForm as Record<string, string>)[f] || null]))
+      const { error } = await supabase.from('jobs').update(patch).eq('id', id)
+      if (error) throw error
+      await supabase.from('audit_log').insert(changed.map(f => ({
+        entity: 'jobs', entity_id: id, field: `plan_${f}`,
+        old_value: currentPlanValues[f] || '', new_value: (editForm as Record<string, string>)[f] || '',
+        changed_by: user?.id ?? '',
+      })))
+      sonnerToast.success('Plan updated')
+      setEditing(false)
+      await fetchJob()
+      await fetchRevisionCount()
+    } catch (e: unknown) {
+      sonnerToast.error(e instanceof Error ? e.message : 'Failed to update plan')
+    } finally { setSavingPlan(false) }
+  }
 
   const handleCancelJob = async () => {
     setBusy(true)
@@ -130,6 +214,7 @@ export const JobDetailPage = () => {
   const isCancelled = job.status === 'cancelled'
   const isDelivered = job.status === 'delivered'
   const canCancel = (isAdmin || isPlanner) && !isCancelled && !isDelivered
+  const canEditPlan = (isAdmin || isPlanner) && !isCancelled && !isDelivered
   // Agents can only log against their own assigned job; office roles can log on behalf of any agent.
   const canLogAction = !isCancelled && !isDelivered && (isAdmin || isPlanner || (isAgent && job.assigned_agent?.id === user?.id))
   const currentStepIdx = isCancelled ? -1 : STEP_STATUSES.indexOf(job.status)
@@ -164,6 +249,11 @@ export const JobDetailPage = () => {
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-bold text-[--color-ink]">{job.job_number}</h1>
               <JobStatusBadge status={job.status} />
+              {revisionCount > 0 && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.65rem', fontWeight: 700, padding: '0.2rem 0.55rem', borderRadius: 999, background: 'rgba(167,139,250,0.15)', color: '#a78bfa', border: '1px solid rgba(167,139,250,0.35)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <History size={10} /> Plan Revised
+                </span>
+              )}
             </div>
             <div className="text-sm text-[--color-ink-muted] mt-0.5">{job.customer?.name ?? '—'}</div>
           </div>
@@ -174,6 +264,12 @@ export const JobDetailPage = () => {
                 {job.do?.do_number ?? '—'}
               </Link>
             </div>
+            {canEditPlan && !editing && (
+              <button onClick={openEdit}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1.1rem', borderRadius: '0.6rem', border: '1px solid var(--gb)', background: 'var(--g2)', color: 'var(--tx2)', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer' }}>
+                <Pencil size={14} /> Edit Plan
+              </button>
+            )}
             {canCancel && (
               <button onClick={() => setShowModal(true)}
                 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1.1rem', borderRadius: '0.6rem', border: '1px solid rgba(251,146,60,0.5)', background: 'rgba(251,146,60,0.1)', color: '#fb923c', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer' }}>
@@ -183,6 +279,62 @@ export const JobDetailPage = () => {
           </div>
         </div>
       </div>
+
+      {editing && (
+        <Card>
+          <SectionHeader icon={Pencil} title="Edit Plan" />
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label style={lbl}>Customer *</label>
+              <select style={inp} value={editForm.customer_id} onChange={e => setEditForm(f => ({ ...f, customer_id: e.target.value }))}>
+                <option value="">Select customer…</option>
+                {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Assign Agent *</label>
+              <select style={inp} value={editForm.assigned_agent_id} onChange={e => setEditForm(f => ({ ...f, assigned_agent_id: e.target.value }))}>
+                <option value="">Select agent…</option>
+                {profiles.filter(p => p.role === 'agent').map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label style={lbl}>Delivery Destination *</label>
+              <input style={inp} value={editForm.delivery_destination} onChange={e => setEditForm(f => ({ ...f, delivery_destination: e.target.value }))} />
+            </div>
+            <div>
+              <label style={lbl}>Service Type</label>
+              <select style={inp} value={editForm.service_type} onChange={e => setEditForm(f => ({ ...f, service_type: e.target.value as ServiceType }))}>
+                {Object.entries(SERVICE_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Packing Type</label>
+              <input style={inp} value={editForm.packing_type} onChange={e => setEditForm(f => ({ ...f, packing_type: e.target.value }))} />
+            </div>
+            <div>
+              <label style={lbl}>Planned Delivery Date</label>
+              <input style={inp} type="date" value={editForm.planned_delivery_date} onChange={e => setEditForm(f => ({ ...f, planned_delivery_date: e.target.value }))} />
+            </div>
+            <div className="sm:col-span-2">
+              <label style={lbl}>Processing Instructions</label>
+              <textarea style={{ ...inp, resize: 'vertical' } as React.CSSProperties} rows={3}
+                value={editForm.processing_instructions} onChange={e => setEditForm(f => ({ ...f, processing_instructions: e.target.value }))} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '0.6rem', marginTop: '1rem' }}>
+            <button onClick={() => setEditing(false)} disabled={savingPlan}
+              style={{ padding: '0.55rem 1.1rem', borderRadius: '0.55rem', border: '1px solid var(--gb)', background: 'var(--g2)', color: 'var(--tx2)', fontWeight: 600, fontSize: '0.83rem', cursor: 'pointer' }}>
+              Cancel
+            </button>
+            <button onClick={handleSaveEditPlan} disabled={savingPlan}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1.2rem', borderRadius: '0.55rem', border: 'none', background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', color: '#fff', fontWeight: 700, fontSize: '0.83rem', cursor: savingPlan ? 'not-allowed' : 'pointer', opacity: savingPlan ? 0.7 : 1 }}>
+              {savingPlan && <Loader2 size={13} style={{ animation: 'spin 0.8s linear infinite' }} />}
+              {savingPlan ? 'Saving…' : 'Save Revised Plan'}
+            </button>
+          </div>
+        </Card>
+      )}
 
       {/* Quick actions — pre-fills the job on the target log form */}
       {canLogAction && (

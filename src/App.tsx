@@ -10,7 +10,6 @@ import { CreateDOPage } from '@/pages/CreateDOPage'
 import { PlanningWorkbenchPage } from '@/pages/PlanningWorkbenchPage'
 import { JobsListPage } from '@/pages/JobsListPage'
 import { JobDetailPage } from '@/pages/JobDetailPage'
-import { CreateJobPage } from '@/pages/CreateJobPage'
 import { QueuePage } from '@/pages/QueuePage'
 import { LogQueuePage } from '@/pages/LogQueuePage'
 import { ExpensesPage } from '@/pages/ExpensesPage'
@@ -52,7 +51,8 @@ export default function App() {
           <Route path="dos/:id"        element={<DODetailPage />} />
           <Route path="planning"       element={<PlanningWorkbenchPage />} />
           <Route path="jobs"           element={<JobsListPage />} />
-          <Route path="jobs/new"       element={<CreateJobPage />} />
+          {/* Jobs are only ever created via Planning Workbench (a job must be tied to a DO) */}
+          <Route path="jobs/new"       element={<Navigate to="/planning" replace />} />
           <Route path="jobs/:id"       element={<JobDetailPage />} />
           <Route path="queue"          element={<QueuePage />} />
           <Route path="queue/log"      element={<LogQueuePage />} />

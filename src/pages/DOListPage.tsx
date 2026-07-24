@@ -39,7 +39,8 @@ export const DOListPage = () => {
       .select(`id, do_number, status, expected_collection_date, created_at,
         supplier:suppliers(id,name),
         source_service_centre:service_centres(id,name,city),
-        items:do_items(id)`)
+        items:do_items(id),
+        jobs:jobs(id)`)
       .order('created_at', { ascending: false })
     setDOs(data ?? [])
     setLoading(false)
@@ -123,7 +124,10 @@ export const DOListPage = () => {
               </thead>
               <tbody>
                 {filtered.map(d => {
-                  const col = DO_COLORS[d.status] ?? '#94a3b8'
+                  const hasJob = (d.jobs?.length ?? 0) > 0
+                  const planned = d.status === 'active' && hasJob
+                  const col = planned ? '#a78bfa' : (DO_COLORS[d.status] ?? '#94a3b8')
+                  const label = planned ? 'Job Assigned' : (DO_STATUS_LABELS[d.status as DOStatus] ?? d.status)
                   const isCancelled = d.status === 'cancelled'
                   return (
                     <tr key={d.id} style={{ opacity: isCancelled ? 0.55 : 1 }}>
@@ -139,7 +143,7 @@ export const DOListPage = () => {
                       <td>{formatDate(d.expected_collection_date)}</td>
                       <td>
                         <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.18rem 0.55rem', borderRadius: 999, background: `${col}22`, color: col, border: `1px solid ${col}44`, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
-                          {DO_STATUS_LABELS[d.status as DOStatus] ?? d.status}
+                          {label}
                         </span>
                       </td>
                       <td style={{ textAlign: 'right' }}>

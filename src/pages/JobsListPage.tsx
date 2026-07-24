@@ -129,10 +129,10 @@ export const JobsListPage = () => {
         </div>
         {(isPlanner || isAdmin) && (
           <button
-            onClick={() => navigate('/jobs/new')}
+            onClick={() => navigate('/planning')}
             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1.1rem', borderRadius: '0.6rem', border: 'none', background: 'linear-gradient(135deg,#2dd4bf,#0d9488)', color: '#07211e', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer', boxShadow: '0 4px 14px rgba(45,212,191,0.25)' }}
           >
-            <Plus size={14} /> New Job
+            <Plus size={14} /> Plan a Job
           </button>
         )}
       </div>

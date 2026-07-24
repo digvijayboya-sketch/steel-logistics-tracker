@@ -246,10 +246,12 @@ export const DODetailPage = () => {
     </div>
   )
 
-  const doColor = DO_COLORS[(doItem.status as DOStatus)] ?? '#94a3b8'
   const isCancelled = doItem.status === 'cancelled'
   const isDraft     = doItem.status === 'draft'
   const hasJob      = linkedJobs.length > 0
+  const isPlanned   = doItem.status === 'active' && hasJob
+  const doColor     = isPlanned ? '#a78bfa' : (DO_COLORS[(doItem.status as DOStatus)] ?? '#94a3b8')
+  const doStatusLabel = isPlanned ? 'Job Assigned' : (DO_STATUS_LABELS[(doItem.status as DOStatus)] ?? doItem.status)
   const canPlan     = (isPlanner || isAdmin) && !hasJob && !isDraft && !isCancelled
   const canCancel   = (isPlanner || isAdmin) && !isCancelled && !['fully_dispatched','closed'].includes(doItem.status)
   const canDelete   = isAdmin && isDraft
@@ -293,7 +295,7 @@ export const DODetailPage = () => {
         <div>
           <h1 style={{ color: 'var(--tx1)', fontSize: '1.375rem', fontWeight: 800, letterSpacing: '-0.02em', margin: 0 }}>{doItem.do_number}</h1>
           <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.22rem 0.65rem', borderRadius: 999, background: `${doColor}22`, color: doColor, border: `1px solid ${doColor}44`, textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: 6, display: 'inline-block' }}>
-            {DO_STATUS_LABELS[(doItem.status as DOStatus)] ?? doItem.status}
+            {doStatusLabel}
           </span>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
