@@ -89,6 +89,7 @@ export const LogQueuePage = () => {
       setGpsStatus('error')
     }
   }
+  useEffect(() => { fetchGPS() }, [])
 
   const validate = () => {
     if (!form.job_id) return 'Select a job'

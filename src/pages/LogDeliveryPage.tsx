@@ -73,6 +73,7 @@ export const LogDeliveryPage = () => {
     const c = await getCoords()
     if (c.lat) { setCoords(c); setGpsStatus('got') } else setGpsStatus('error')
   }
+  useEffect(() => { fetchGPS() }, [])
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]

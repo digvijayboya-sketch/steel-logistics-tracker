@@ -73,14 +73,14 @@ export const DashboardPage = () => {
 
   const kpis = isAgent
     ? [
-        { label: 'My Active Jobs',   value: activeJobs.length,  icon: Briefcase, color: '#60a5fa', route: '/jobs',       caption: 'In progress' },
+        { label: 'My Active Jobs',   value: activeJobs.length,  icon: Briefcase, color: '#60a5fa', route: '/jobs?status=active', caption: 'In progress' },
         { label: 'Pending Expenses', value: pendingExp.filter(e => { const j = jobs.find(x => x.id === e.job_id); return j?.assigned_agent_id === user?.id }).length,
           icon: Receipt, color: '#fbbf24', route: '/expenses?status=pending', caption: 'Awaiting approval' },
         { label: 'Deliveries',       value: deliveries.filter(d => { const j = jobs.find(x => x.id === d.job_id); return j?.assigned_agent_id === user?.id }).length,
           icon: Truck, color: '#34d399', route: '/deliveries', caption: 'Total records' },
       ]
     : [
-        { label: 'Active Jobs',      value: activeJobs.length,      icon: Briefcase,    color: '#60a5fa', route: '/jobs',                  caption: 'Across all agents'     },
+        { label: 'Active Jobs',      value: activeJobs.length,      icon: Briefcase,    color: '#60a5fa', route: '/jobs?status=active',    caption: 'Across all agents'     },
         { label: 'Active DOs',       value: activeDOs.length,       icon: FileText,     color: '#a78bfa', route: '/dos?status=active',      caption: 'In circulation'        },
         { label: 'Pending Expenses', value: pendingExp.length,      icon: Receipt,      color: '#fbbf24', route: '/expenses?status=pending',caption: 'Awaiting approval'     },
         { label: 'Deliveries Today', value: deliveriesToday.length, icon: Truck,        color: '#2dd4bf', route: '/deliveries',             caption: 'Delivered today'       },

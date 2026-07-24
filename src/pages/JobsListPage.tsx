@@ -6,7 +6,7 @@
  * Cancelled rows are visually dimmed and + Queue / → Deliver buttons are suppressed.
  */
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useRole } from '@/hooks/useRole'
 import { useDataStore } from '@/store/dataStore'
 import { JOB_STATUS_LABELS } from '@/types'
@@ -40,8 +40,12 @@ const PageShell = ({ children }: { children: React.ReactNode }) => (
 export const JobsListPage = () => {
   const { isAgent, isPlanner, isAdmin, user } = useRole()
   const navigate = useNavigate()
+  const [sp] = useSearchParams()
   const { jobs, loading, fetchJobs } = useDataStore()
-  const [filter, setFilter] = useState<JobStatus | 'all'>('all')
+  const initialFilter = sp.get('status')
+  const [filter, setFilter] = useState<JobStatus | 'all' | 'active'>(
+    initialFilter === 'active' || ALL_STATUSES.includes(initialFilter as JobStatus) ? (initialFilter as JobStatus | 'active') : 'all'
+  )
 
   useEffect(() => { fetchJobs() }, [])
 
@@ -54,7 +58,9 @@ export const JobsListPage = () => {
 
   // When filter is 'all', agents don't see cancelled jobs by default
   // They have to explicitly click the Cancelled tab to see them
-  const filtered = filter === 'all'
+  const filtered = filter === 'active'
+    ? baseJobs.filter(j => !['delivered', 'cancelled'].includes(j.status))
+    : filter === 'all'
     ? isAgent
       ? baseJobs.filter(j => j.status !== 'cancelled')
       : baseJobs
@@ -67,11 +73,13 @@ export const JobsListPage = () => {
 
   const cancelledCount = counts['cancelled'] ?? 0
 
-  const filterBtn = (val: JobStatus | 'all', label: string, color?: string) => {
+  const filterBtn = (val: JobStatus | 'all' | 'active', label: string, color?: string) => {
     const count = val === 'all'
       ? isAgent
         ? baseJobs.filter(j => j.status !== 'cancelled').length
         : baseJobs.length
+      : val === 'active'
+      ? baseJobs.filter(j => !['delivered', 'cancelled'].includes(j.status)).length
       : (counts[val as JobStatus] ?? 0)
     const active = filter === val
     return (
@@ -132,6 +140,7 @@ export const JobsListPage = () => {
       {/* Filter bar */}
       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1.1rem', alignItems: 'center' }}>
         {filterBtn('all', 'All')}
+        {filterBtn('active', 'Active', '#60a5fa')}
         {filterBtn('assigned',               'Assigned',       JOB_COLORS.assigned)}
         {filterBtn('acknowledged',            'Acknowledged',   JOB_COLORS.acknowledged)}
         {filterBtn('at_service_centre',       'At SC',          JOB_COLORS.at_service_centre)}
@@ -179,7 +188,7 @@ export const JobsListPage = () => {
           <Briefcase size={32} style={{ color: 'var(--tx4)', marginBottom: '0.75rem' }} />
           <div style={{ color: 'var(--tx2)', fontWeight: 600, fontSize: '0.9rem' }}>No jobs found</div>
           <div style={{ color: 'var(--tx4)', fontSize: '0.8rem', marginTop: '0.3rem' }}>
-            {filter === 'all' ? 'No jobs have been created yet.' : `No jobs with status "${JOB_STATUS_LABELS[filter as JobStatus]}".`}
+            {filter === 'all' ? 'No jobs have been created yet.' : filter === 'active' ? 'No active jobs right now.' : `No jobs with status "${JOB_STATUS_LABELS[filter as JobStatus]}".`}
           </div>
         </div>
       ) : (
@@ -268,7 +277,7 @@ export const JobsListPage = () => {
           </div>
 
           <div style={{ padding: '0.6rem 1.25rem', borderTop: '1px solid var(--gb)', fontSize: '0.75rem', color: 'var(--tx4)' }}>
-            {filtered.length} job{filtered.length !== 1 ? 's' : ''}{filter !== 'all' ? ` · filtered by "${JOB_STATUS_LABELS[filter as JobStatus]}"` : ''}
+            {filtered.length} job{filtered.length !== 1 ? 's' : ''}{filter === 'active' ? ' · filtered by "Active"' : filter !== 'all' ? ` · filtered by "${JOB_STATUS_LABELS[filter as JobStatus]}"` : ''}
           </div>
         </div>
       )}
