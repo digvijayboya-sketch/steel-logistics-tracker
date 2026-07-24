@@ -2,12 +2,29 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
 import { useDataStore } from '@/store/dataStore'
-import { ArrowLeft, Camera, MapPin, Receipt, Loader2, X } from 'lucide-react'
+import { ArrowLeft, Camera, MapPin, Receipt, Loader2, X, Save, RefreshCw, CheckCircle2, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
-import { getCoords } from '@/lib/utils'
+import { getCoords, photoToDataURL, dataURLToFile } from '@/lib/utils'
 import { apiUploadPhoto } from '@/lib/api'
 import type { ExpenseCategory, SettlementMethod } from '@/types'
 import { SETTLEMENT_LABELS } from '@/types'
+
+const LS_PREFIX = 'pending_expense_'
+
+type PendingExpense = {
+  job_id: string
+  logged_as: string
+  category: ExpenseCategory
+  amount_inr: string
+  date: string
+  payee_description: string
+  settlement_method: SettlementMethod
+  photo_dataurl: string
+  gps_lat?: number
+  gps_lng?: number
+}
+
+type SyncResult = { key: string; ok: boolean; message: string }
 
 const inp: React.CSSProperties = {
   width:'100%', padding:'0.55rem 0.75rem', borderRadius:'0.55rem',
@@ -55,9 +72,18 @@ export const LogExpensePage = () => {
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string>('')
   const [submitting, setSubmitting] = useState(false)
+  const [savingLocal, setSavingLocal] = useState(false)
+  const [pendingCount, setPendingCount] = useState(0)
+  const [syncing, setSyncing] = useState(false)
+  const [syncResults, setSyncResults] = useState<SyncResult[] | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const setField = (k:string,v:string)=>setForm(f=>({...f,[k]:v}))
+
+  const refreshPendingCount = () => {
+    setPendingCount(Object.keys(localStorage).filter(k => k.startsWith(LS_PREFIX)).length)
+  }
+  useEffect(() => { refreshPendingCount() }, [])
 
   const fetchGPS = async () => {
     setGpsStatus('fetching')
@@ -80,37 +106,110 @@ export const LogExpensePage = () => {
 
   const selectedJob = jobs.find(j=>j.id===form.job_id)
 
+  const validate = () => {
+    if (!form.job_id) return 'Select a job'
+    if (!form.category) return 'Select a category'
+    const amt = parseFloat(form.amount_inr)
+    if (isNaN(amt)||amt<=0) return 'Enter a valid amount'
+    if (!form.payee_description.trim()) return 'Payee description required'
+    return null
+  }
+
+  const submitExpense = async (p: PendingExpense) => {
+    const ext = p.photo_dataurl.match(/^data:image\/(\w+);/)?.[1] || 'jpg'
+    const photoFile = dataURLToFile(p.photo_dataurl, `receipt.${ext}`)
+    const path = `${p.logged_as}/${p.job_id}/${Date.now()}.${ext}`
+    const photoUrl = await apiUploadPhoto('expense-photos', path, photoFile)
+    await addExpense({
+      job_id: p.job_id,
+      category: p.category,
+      amount_inr: parseFloat(p.amount_inr),
+      payee_description: p.payee_description.trim(),
+      settlement_method: p.settlement_method,
+      photo_url: photoUrl,
+      gps_lat: p.gps_lat,
+      gps_lng: p.gps_lng,
+      logged_by: p.logged_as,
+      created_at: new Date(p.date).toISOString(),
+    })
+  }
+
+  const buildPayload = async (): Promise<PendingExpense | null> => {
+    if (!photoFile) { toast.error('Receipt photo is required'); return null }
+    const photo_dataurl = await photoToDataURL(photoFile)
+    return {
+      job_id: form.job_id,
+      logged_as: isAdmin&&form.logged_as ? form.logged_as : (user?.id ?? ''),
+      category: form.category as ExpenseCategory,
+      amount_inr: form.amount_inr,
+      date: form.date,
+      payee_description: form.payee_description,
+      settlement_method: form.settlement_method,
+      photo_dataurl,
+      gps_lat: coords.lat,
+      gps_lng: coords.lng,
+    }
+  }
+
   const handleSubmit = async (e:React.FormEvent) => {
     e.preventDefault()
-    if (!form.job_id) { toast.error('Select a job'); return }
-    if (!form.category) { toast.error('Select a category'); return }
-    const amt = parseFloat(form.amount_inr)
-    if (isNaN(amt)||amt<=0) { toast.error('Enter a valid amount'); return }
-    if (!form.payee_description.trim()) { toast.error('Payee description required'); return }
-    if (!photoFile) { toast.error('Receipt photo is required'); return }
+    const err = validate()
+    if (err) { toast.error(err); return }
     setSubmitting(true)
     try {
-      const loggedById = isAdmin&&form.logged_as ? form.logged_as : user?.id??''
-      const ext = photoFile.name.split('.').pop() || 'jpg'
-      const path = `${loggedById}/${form.job_id}/${Date.now()}.${ext}`
-      const photoUrl = await apiUploadPhoto('expense-photos', path, photoFile)
-      await addExpense({
-        job_id: form.job_id,
-        category: form.category as ExpenseCategory,
-        amount_inr: amt,
-        payee_description: form.payee_description.trim(),
-        settlement_method: form.settlement_method,
-        photo_url: photoUrl,
-        gps_lat: coords.lat,
-        gps_lng: coords.lng,
-        logged_by: loggedById,
-        created_at: new Date(form.date).toISOString(),
-      })
+      const payload = await buildPayload()
+      if (!payload) { setSubmitting(false); return }
+      await submitExpense(payload)
       toast.success('Expense logged — pending approval')
       navigate('/expenses')
     } catch(e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to log expense')
     } finally { setSubmitting(false) }
+  }
+
+  const handleSaveLocally = async () => {
+    const err = validate()
+    if (err) { toast.error(err); return }
+    setSavingLocal(true)
+    try {
+      const payload = await buildPayload()
+      if (!payload) return
+      if (payload.photo_dataurl.length > 1_800_000) {
+        toast.error('Photo too large to save offline — try again when back online')
+        return
+      }
+      localStorage.setItem(`${LS_PREFIX}${Date.now()}`, JSON.stringify(payload))
+      toast.success('Saved locally — sync when back online')
+      refreshPendingCount()
+      navigate('/expenses')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save locally')
+    } finally { setSavingLocal(false) }
+  }
+
+  const handleSyncNow = async () => {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith(LS_PREFIX))
+    if (keys.length === 0) { toast.info('Nothing pending to sync'); return }
+    setSyncing(true)
+    const results: SyncResult[] = []
+    for (const key of keys) {
+      const raw = localStorage.getItem(key)
+      if (!raw) continue
+      try {
+        const payload = JSON.parse(raw) as PendingExpense
+        await submitExpense(payload)
+        localStorage.removeItem(key)
+        results.push({ key, ok: true, message: 'Synced' })
+      } catch (e: unknown) {
+        results.push({ key, ok: false, message: e instanceof Error ? e.message : 'Failed' })
+      }
+    }
+    setSyncResults(results)
+    refreshPendingCount()
+    setSyncing(false)
+    const failed = results.filter(r => !r.ok).length
+    if (failed === 0) toast.success(`Synced ${results.length} pending expense${results.length > 1 ? 's' : ''}`)
+    else toast.error(`${failed} of ${results.length} failed to sync`)
   }
 
   const card: React.CSSProperties = {
@@ -130,6 +229,28 @@ export const LogExpensePage = () => {
           <p style={{color:'var(--tx4)',fontSize:'0.78rem',margin:0}}>Cash payment made in the field</p>
         </div>
       </div>
+
+      {pendingCount > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.7rem 1rem', borderRadius: '0.7rem', marginBottom: '1rem', background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.28)' }}>
+          <div style={{ fontSize: '0.84rem', color: 'var(--tx1)', flex: 1 }}>
+            <span style={{ fontWeight: 700 }}>{pendingCount} expense{pendingCount > 1 ? 's' : ''}</span>
+            <span style={{ color: 'var(--tx2)' }}> saved locally, not yet synced</span>
+          </div>
+          <button type="button" onClick={handleSyncNow} disabled={syncing}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.85rem', borderRadius: '0.5rem', border: 'none', background: '#fbbf24', color: '#1c1400', fontWeight: 700, fontSize: '0.78rem', cursor: syncing ? 'not-allowed' : 'pointer', opacity: syncing ? 0.65 : 1 }}>
+            <RefreshCw size={13} style={syncing ? { animation: 'spin 0.8s linear infinite' } : undefined} /> {syncing ? 'Syncing…' : 'Sync Now'}
+          </button>
+        </div>
+      )}
+      {syncResults && (
+        <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+          {syncResults.map(r => (
+            <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', fontSize: '0.78rem', background: r.ok ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)', border: `1px solid ${r.ok ? 'rgba(52,211,153,0.3)' : 'rgba(248,113,113,0.3)'}`, color: r.ok ? '#34d399' : '#f87171' }}>
+              {r.ok ? <CheckCircle2 size={13} /> : <XCircle size={13} />} {r.message}
+            </div>
+          ))}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         <div style={card}>
@@ -230,9 +351,13 @@ export const LogExpensePage = () => {
           </div>
         </div>
 
-        <div style={{display:'flex',gap:'0.75rem',paddingBottom:'2rem'}}>
-          <button type="button" onClick={()=>navigate(-1)} style={{flex:1,padding:'0.7rem',borderRadius:'0.6rem',border:'1px solid var(--gb)',background:'var(--g2)',color:'var(--tx2)',fontWeight:600,fontSize:'0.88rem',cursor:'pointer'}}>Cancel</button>
-          <button type="submit" disabled={submitting} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem',padding:'0.7rem',borderRadius:'0.6rem',border:'none',background:'linear-gradient(135deg,#2dd4bf,#0d9488)',color:'#07211e',fontWeight:700,fontSize:'0.88rem',cursor:'pointer',opacity:submitting?0.65:1}}>
+        <div style={{display:'flex',gap:'0.6rem',paddingBottom:'2rem',flexWrap:'wrap'}}>
+          <button type="button" onClick={()=>navigate(-1)} style={{flex:'1 1 100px',padding:'0.7rem',borderRadius:'0.6rem',border:'1px solid var(--gb)',background:'var(--g2)',color:'var(--tx2)',fontWeight:600,fontSize:'0.85rem',cursor:'pointer'}}>Cancel</button>
+          <button type="button" onClick={handleSaveLocally} disabled={savingLocal}
+            style={{flex:'1 1 130px',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem',padding:'0.7rem',borderRadius:'0.6rem',border:'1px solid var(--accent)',background:'var(--accent-dim)',color:'var(--accent)',fontWeight:700,fontSize:'0.85rem',cursor:savingLocal?'not-allowed':'pointer',opacity:savingLocal?0.65:1}}>
+            <Save size={14}/> Save Locally
+          </button>
+          <button type="submit" disabled={submitting} style={{flex:'1 1 130px',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem',padding:'0.7rem',borderRadius:'0.6rem',border:'none',background:'linear-gradient(135deg,#2dd4bf,#0d9488)',color:'#07211e',fontWeight:700,fontSize:'0.85rem',cursor:'pointer',opacity:submitting?0.65:1}}>
             {submitting && <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} />}
             {submitting?'Uploading…':'Submit Expense'}
           </button>

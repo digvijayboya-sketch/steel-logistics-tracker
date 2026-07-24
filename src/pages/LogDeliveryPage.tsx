@@ -2,11 +2,32 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
 import { useDataStore } from '@/store/dataStore'
-import { ArrowLeft, Camera, MapPin, Truck, AlertTriangle, CheckCircle2, X, Loader2 } from 'lucide-react'
+import { ArrowLeft, Camera, MapPin, Truck, AlertTriangle, CheckCircle2, X, Loader2, Save, RefreshCw, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
-import { getCoords } from '@/lib/utils'
+import { getCoords, photoToDataURL, dataURLToFile } from '@/lib/utils'
 import { apiUploadPhoto } from '@/lib/api'
 import type { DeliveryStatus } from '@/types'
+
+const LS_PREFIX = 'pending_delivery_'
+
+type PendingDelivery = {
+  job_id: string
+  logged_as: string
+  vehicle_number: string
+  delivery_address: string
+  delivery_status: DeliveryStatus
+  partial_reason: string
+  destination_changed: boolean
+  change_reason: string
+  authorised_by_office: boolean
+  planned_destination?: string
+  customer_name: string
+  photo_dataurl: string
+  gps_lat?: number
+  gps_lng?: number
+}
+
+type SyncResult = { key: string; ok: boolean; message: string }
 
 const inp: React.CSSProperties = {
   width:'100%', padding:'0.55rem 0.75rem', borderRadius:'0.55rem',
@@ -47,9 +68,18 @@ export const LogDeliveryPage = () => {
   const [photoPreview, setPhotoPreview] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [loadingLines, setLoadingLines] = useState(false)
+  const [savingLocal, setSavingLocal] = useState(false)
+  const [pendingCount, setPendingCount] = useState(0)
+  const [syncing, setSyncing] = useState(false)
+  const [syncResults, setSyncResults] = useState<SyncResult[] | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const setField = (k:string,v:string|boolean)=>setForm(f=>({...f,[k]:v}))
+
+  const refreshPendingCount = () => {
+    setPendingCount(Object.keys(localStorage).filter(k => k.startsWith(LS_PREFIX)).length)
+  }
+  useEffect(() => { refreshPendingCount() }, [])
   const selectedJob = jobs.find(j=>j.id===form.job_id)
   const doLines = (selectedJob?.do as any)?.items as Array<{ id:string; coil_grade:string; thickness_mm:number; width_mm:number; quantity:number; weight_mt:number }> | undefined
 
@@ -87,55 +117,132 @@ export const LogDeliveryPage = () => {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  const validate = () => {
+    if (!form.job_id) return 'Select a job'
+    if (!form.vehicle_number.trim()) return 'Vehicle number required'
+    if (!form.delivery_address.trim()) return 'Delivery address required'
+    if (form.delivery_status==='partial' && !form.partial_reason.trim()) return 'Enter a reason for the partial delivery'
+    if (form.destination_changed && !form.change_reason.trim()) return 'Enter reason for destination change'
+    return null
+  }
+
+  const submitDelivery = async (p: PendingDelivery) => {
+    const ext = p.photo_dataurl.match(/^data:image\/(\w+);/)?.[1] || 'jpg'
+    const photoFile = dataURLToFile(p.photo_dataurl, `proof.${ext}`)
+    const path = `${p.logged_as}/${p.job_id}/${Date.now()}.${ext}`
+    const photoUrl = await apiUploadPhoto('delivery-proofs', path, photoFile)
+
+    await addDelivery({
+      job_id: p.job_id,
+      customer_name: p.customer_name,
+      delivery_address: p.delivery_address.trim(),
+      vehicle_number: p.vehicle_number.trim().toUpperCase(),
+      delivered_at: new Date().toISOString(),
+      delivery_status: p.delivery_status,
+      unloaded_photo_url: photoUrl,
+      final_lat: p.gps_lat,
+      final_lng: p.gps_lng,
+      destination_changed: p.destination_changed,
+      old_destination: p.destination_changed ? p.planned_destination : undefined,
+      new_destination: p.destination_changed ? p.delivery_address.trim() : undefined,
+      change_reason: p.destination_changed ? p.change_reason.trim() : undefined,
+      partial_reason: p.delivery_status === 'partial' ? p.partial_reason.trim() : undefined,
+      authorised_by_office: p.destination_changed ? p.authorised_by_office : undefined,
+      created_by: p.logged_as,
+    })
+
+    // If this was a full delivery and every job on the linked DO is now terminal, close out the DO
+    const job = jobs.find(j => j.id === p.job_id)
+    const doId = job?.do?.id
+    if (p.delivery_status === 'delivered' && doId) {
+      const siblingJobs = jobs.filter(j => j.do?.id === doId)
+      const allTerminal = siblingJobs.every(j => j.id === p.job_id || ['delivered','cancelled'].includes(j.status))
+      if (allTerminal) {
+        await updateDOStatus(doId, 'fully_dispatched', p.logged_as).catch(() => {})
+      }
+    }
+  }
+
+  const buildPayload = async (): Promise<PendingDelivery | null> => {
+    if (!photoFile) { toast.error('Unload photo proof is required'); return null }
+    const photo_dataurl = await photoToDataURL(photoFile)
+    return {
+      job_id: form.job_id,
+      logged_as: isAdmin&&form.logged_as ? form.logged_as : (user?.id ?? ''),
+      vehicle_number: form.vehicle_number,
+      delivery_address: form.delivery_address,
+      delivery_status: form.delivery_status,
+      partial_reason: form.partial_reason,
+      destination_changed: form.destination_changed,
+      change_reason: form.change_reason,
+      authorised_by_office: form.authorised_by_office,
+      planned_destination: selectedJob?.delivery_destination,
+      customer_name: selectedJob?.customer?.name ?? selectedJob?.delivery_destination ?? '',
+      photo_dataurl,
+      gps_lat: coords.lat,
+      gps_lng: coords.lng,
+    }
+  }
+
   const handleSubmit = async (e:React.FormEvent) => {
     e.preventDefault()
-    if (!form.job_id) { toast.error('Select a job'); return }
-    if (!form.vehicle_number.trim()) { toast.error('Vehicle number required'); return }
-    if (!form.delivery_address.trim()) { toast.error('Delivery address required'); return }
-    if (form.delivery_status==='partial' && !form.partial_reason.trim()) { toast.error('Enter a reason for the partial delivery'); return }
-    if (form.destination_changed&&!form.change_reason.trim()) { toast.error('Enter reason for destination change'); return }
-    if (!photoFile) { toast.error('Unload photo proof is required'); return }
+    const err = validate()
+    if (err) { toast.error(err); return }
     setSubmitting(true)
     try {
-      const loggedById = isAdmin&&form.logged_as ? form.logged_as : user?.id??''
-      const ext = photoFile.name.split('.').pop() || 'jpg'
-      const path = `${loggedById}/${form.job_id}/${Date.now()}.${ext}`
-      const photoUrl = await apiUploadPhoto('delivery-proofs', path, photoFile)
-
-      await addDelivery({
-        job_id: form.job_id,
-        customer_name: selectedJob?.customer?.name??selectedJob?.delivery_destination??'',
-        delivery_address: form.delivery_address.trim(),
-        vehicle_number: form.vehicle_number.trim().toUpperCase(),
-        delivered_at: new Date().toISOString(),
-        delivery_status: form.delivery_status,
-        unloaded_photo_url: photoUrl,
-        final_lat: coords.lat,
-        final_lng: coords.lng,
-        destination_changed: form.destination_changed,
-        old_destination: form.destination_changed ? selectedJob?.delivery_destination : undefined,
-        new_destination: form.destination_changed ? form.delivery_address.trim() : undefined,
-        change_reason: form.destination_changed ? form.change_reason.trim() : undefined,
-        partial_reason: form.delivery_status === 'partial' ? form.partial_reason.trim() : undefined,
-        authorised_by_office: form.destination_changed ? form.authorised_by_office : undefined,
-        created_by: loggedById,
-      })
-
-      // If this was a full delivery and every job on the linked DO is now terminal, close out the DO
-      const doId = selectedJob?.do?.id
-      if (form.delivery_status === 'delivered' && doId) {
-        const siblingJobs = jobs.filter(j => j.do?.id === doId)
-        const allTerminal = siblingJobs.every(j => j.id === form.job_id || ['delivered','cancelled'].includes(j.status))
-        if (allTerminal) {
-          await updateDOStatus(doId, 'fully_dispatched', loggedById).catch(() => {})
-        }
-      }
-
+      const payload = await buildPayload()
+      if (!payload) { setSubmitting(false); return }
+      await submitDelivery(payload)
       toast.success('Delivery logged successfully')
       navigate('/deliveries')
     } catch(e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to log delivery')
     } finally { setSubmitting(false) }
+  }
+
+  const handleSaveLocally = async () => {
+    const err = validate()
+    if (err) { toast.error(err); return }
+    setSavingLocal(true)
+    try {
+      const payload = await buildPayload()
+      if (!payload) return
+      if (payload.photo_dataurl.length > 1_800_000) {
+        toast.error('Photo too large to save offline — try again when back online')
+        return
+      }
+      localStorage.setItem(`${LS_PREFIX}${Date.now()}`, JSON.stringify(payload))
+      toast.success('Saved locally — sync when back online')
+      refreshPendingCount()
+      navigate('/deliveries')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save locally')
+    } finally { setSavingLocal(false) }
+  }
+
+  const handleSyncNow = async () => {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith(LS_PREFIX))
+    if (keys.length === 0) { toast.info('Nothing pending to sync'); return }
+    setSyncing(true)
+    const results: SyncResult[] = []
+    for (const key of keys) {
+      const raw = localStorage.getItem(key)
+      if (!raw) continue
+      try {
+        const payload = JSON.parse(raw) as PendingDelivery
+        await submitDelivery(payload)
+        localStorage.removeItem(key)
+        results.push({ key, ok: true, message: 'Synced' })
+      } catch (e: unknown) {
+        results.push({ key, ok: false, message: e instanceof Error ? e.message : 'Failed' })
+      }
+    }
+    setSyncResults(results)
+    refreshPendingCount()
+    setSyncing(false)
+    const failed = results.filter(r => !r.ok).length
+    if (failed === 0) toast.success(`Synced ${results.length} pending deliver${results.length > 1 ? 'ies' : 'y'}`)
+    else toast.error(`${failed} of ${results.length} failed to sync`)
   }
 
   const card: React.CSSProperties = {
@@ -155,6 +262,28 @@ export const LogDeliveryPage = () => {
           <p style={{color:'var(--tx4)',fontSize:'0.78rem',margin:0}}>Record completed delivery to customer</p>
         </div>
       </div>
+
+      {pendingCount > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.7rem 1rem', borderRadius: '0.7rem', marginBottom: '1rem', background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.28)' }}>
+          <div style={{ fontSize: '0.84rem', color: 'var(--tx1)', flex: 1 }}>
+            <span style={{ fontWeight: 700 }}>{pendingCount} deliver{pendingCount > 1 ? 'ies' : 'y'}</span>
+            <span style={{ color: 'var(--tx2)' }}> saved locally, not yet synced</span>
+          </div>
+          <button type="button" onClick={handleSyncNow} disabled={syncing}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.85rem', borderRadius: '0.5rem', border: 'none', background: '#fbbf24', color: '#1c1400', fontWeight: 700, fontSize: '0.78rem', cursor: syncing ? 'not-allowed' : 'pointer', opacity: syncing ? 0.65 : 1 }}>
+            <RefreshCw size={13} style={syncing ? { animation: 'spin 0.8s linear infinite' } : undefined} /> {syncing ? 'Syncing…' : 'Sync Now'}
+          </button>
+        </div>
+      )}
+      {syncResults && (
+        <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+          {syncResults.map(r => (
+            <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', fontSize: '0.78rem', background: r.ok ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)', border: `1px solid ${r.ok ? 'rgba(52,211,153,0.3)' : 'rgba(248,113,113,0.3)'}`, color: r.ok ? '#34d399' : '#f87171' }}>
+              {r.ok ? <CheckCircle2 size={13} /> : <XCircle size={13} />} {r.message}
+            </div>
+          ))}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         <div style={card}>
@@ -315,9 +444,13 @@ export const LogDeliveryPage = () => {
           </div>
         </div>
 
-        <div style={{display:'flex',gap:'0.75rem',paddingBottom:'2rem'}}>
-          <button type="button" onClick={()=>navigate(-1)} style={{flex:1,padding:'0.7rem',borderRadius:'0.6rem',border:'1px solid var(--gb)',background:'var(--g2)',color:'var(--tx2)',fontWeight:600,fontSize:'0.88rem',cursor:'pointer'}}>Cancel</button>
-          <button type="submit" disabled={submitting} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem',padding:'0.7rem',borderRadius:'0.6rem',border:'none',background:'linear-gradient(135deg,#2dd4bf,#0d9488)',color:'#07211e',fontWeight:700,fontSize:'0.88rem',cursor:'pointer',opacity:submitting?0.65:1}}>
+        <div style={{display:'flex',gap:'0.6rem',paddingBottom:'2rem',flexWrap:'wrap'}}>
+          <button type="button" onClick={()=>navigate(-1)} style={{flex:'1 1 100px',padding:'0.7rem',borderRadius:'0.6rem',border:'1px solid var(--gb)',background:'var(--g2)',color:'var(--tx2)',fontWeight:600,fontSize:'0.85rem',cursor:'pointer'}}>Cancel</button>
+          <button type="button" onClick={handleSaveLocally} disabled={savingLocal}
+            style={{flex:'1 1 130px',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem',padding:'0.7rem',borderRadius:'0.6rem',border:'1px solid var(--accent)',background:'var(--accent-dim)',color:'var(--accent)',fontWeight:700,fontSize:'0.85rem',cursor:savingLocal?'not-allowed':'pointer',opacity:savingLocal?0.65:1}}>
+            <Save size={14}/> Save Locally
+          </button>
+          <button type="submit" disabled={submitting} style={{flex:'1 1 130px',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem',padding:'0.7rem',borderRadius:'0.6rem',border:'none',background:'linear-gradient(135deg,#2dd4bf,#0d9488)',color:'#07211e',fontWeight:700,fontSize:'0.85rem',cursor:'pointer',opacity:submitting?0.65:1}}>
             {submitting && <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} />}
             {submitting?'Uploading…':'Log Delivery'}
           </button>
