@@ -176,7 +176,7 @@ export const apiGetJobs = async () => {
   const { data, error } = await supabase
     .from('jobs')
     .select(`id, job_number, delivery_destination, service_type, packing_type,
-      planned_delivery_date, status, created_at, updated_at,
+      planned_delivery_date, status, created_at, updated_at, assigned_agent_id,
       do:delivery_orders(id,do_number,source_service_centre:service_centres(id,name,city)),
       customer:customers(id,name,city),
       assigned_agent:profiles(id,full_name,role)`)
@@ -211,7 +211,7 @@ export const apiUpdateJobStatus = async (id: string, status: JobStatus, changedB
 export const apiGetQueueUpdates = async () => {
   const { data, error } = await supabase
     .from('queue_updates')
-    .select(`id, queue_number, checkin_time, estimated_processing_minutes,
+    .select(`id, job_id, queue_number, checkin_time, estimated_processing_minutes,
       processing_started_at, processing_completed_at, notes, created_at,
       service_centre:service_centres(id,name,city),
       logged_by_profile:profiles!queue_updates_logged_by_fkey(id,full_name)`)
