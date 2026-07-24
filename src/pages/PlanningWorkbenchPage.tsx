@@ -3,11 +3,22 @@ import { useSearchParams, Link } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
 import { useRole } from '@/hooks/useRole'
 import { useDataStore } from '@/store/dataStore'
-import { ClipboardList, Package, AlertTriangle, Loader2, ArrowRight } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { ClipboardList, Package, AlertTriangle, Loader2, ArrowRight, History, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
-import { SERVICE_TYPE_LABELS, DO_STATUS_LABELS } from '@/types'
-import type { ServiceType, DOStatus } from '@/types'
+import { SERVICE_TYPE_LABELS, DO_STATUS_LABELS, JOB_STATUS_LABELS } from '@/types'
+import type { ServiceType, DOStatus, JobStatus } from '@/types'
 import { formatDate } from '@/lib/utils'
+
+type PlanFilter = 'all' | 'unplanned' | 'planned' | 'revised'
+type PlanStatus = 'unplanned' | 'planned' | 'revised'
+
+const PLAN_FILTERS: { value: PlanFilter; label: string; color: string }[] = [
+  { value: 'all',       label: 'All',       color: 'var(--accent)' },
+  { value: 'unplanned', label: 'Unplanned', color: '#60a5fa' },
+  { value: 'planned',   label: 'Planned',   color: '#34d399' },
+  { value: 'revised',   label: 'Plan Revised', color: '#a78bfa' },
+]
 
 const inp: React.CSSProperties = {
   width:'100%', padding:'0.55rem 0.75rem', borderRadius:'0.55rem',
@@ -37,6 +48,13 @@ export const PlanningWorkbenchPage = () => {
 
   useEffect(() => { fetchDOs(); fetchJobs(); fetchLookups() }, [])
 
+  const [revisedJobIds, setRevisedJobIds] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    supabase.from('audit_log').select('entity_id').eq('entity', 'jobs').like('field', 'plan_%')
+      .then(({ data }) => setRevisedJobIds(new Set((data ?? []).map(r => r.entity_id))))
+  }, [])
+
+  const [planFilter, setPlanFilter] = useState<PlanFilter>('all')
   const [selectedDoId, setSelectedDoId] = useState(sp.get('do') ?? '')
   const [form, setForm] = useState({
     customer_id: '',
@@ -59,12 +77,34 @@ export const PlanningWorkbenchPage = () => {
 
   const isLoading = loading['dos'] || loading['jobs'] || loading['lookups']
 
-  const doIdsWithJobs = useMemo(() => new Set(jobs.map(j => j.do?.id).filter(Boolean)), [jobs])
-  const unplannedDOs = useMemo(
-    () => dos.filter(d => d.status === 'active' && !doIdsWithJobs.has(d.id)),
-    [dos, doIdsWithJobs]
+  const jobByDoId = useMemo(() => {
+    const m = new Map<string, typeof jobs[0]>()
+    for (const j of jobs) if (j.do?.id) m.set(j.do.id, j)
+    return m
+  }, [jobs])
+
+  const planStatusOf = (doId: string): PlanStatus => {
+    const job = jobByDoId.get(doId)
+    if (!job) return 'unplanned'
+    return revisedJobIds.has(job.id) ? 'revised' : 'planned'
+  }
+
+  // The workbench only deals with active DOs — draft/closed/cancelled aren't part of the planning lifecycle.
+  const activeDOs = useMemo(() => dos.filter(d => d.status === 'active'), [dos])
+  const planCounts = useMemo(() => {
+    const c: Record<PlanStatus, number> = { unplanned: 0, planned: 0, revised: 0 }
+    for (const d of activeDOs) c[planStatusOf(d.id)]++
+    return c
+  }, [activeDOs, jobByDoId, revisedJobIds])
+
+  const filteredDOs = useMemo(
+    () => planFilter === 'all' ? activeDOs : activeDOs.filter(d => planStatusOf(d.id) === planFilter),
+    [activeDOs, planFilter, jobByDoId, revisedJobIds]
   )
+  const unplannedDOs = filteredDOs
   const selectedDO = dos.find(d => d.id === selectedDoId)
+  const selectedDOJob = selectedDoId ? jobByDoId.get(selectedDoId) : undefined
+  const selectedDOPlanStatus = selectedDoId ? planStatusOf(selectedDoId) : 'unplanned'
   const agents = profiles.filter(p => p.role === 'agent' || (p.role as string) === 'manager')
 
   const agentActiveJobCount = form.assigned_agent_id
@@ -130,22 +170,52 @@ export const PlanningWorkbenchPage = () => {
         </div>
       )}
 
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1.1rem' }}>
+        {PLAN_FILTERS.map(f => {
+          const active = planFilter === f.value
+          const count = f.value === 'all' ? activeDOs.length : planCounts[f.value as PlanStatus]
+          return (
+            <button key={f.value} onClick={() => setPlanFilter(f.value)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.35rem',
+                padding: '0.38rem 0.9rem', borderRadius: 999, fontSize: '0.76rem', fontWeight: 600,
+                border: active ? `1px solid ${f.color}` : '1px solid var(--gb)',
+                background: active ? `${f.color}22` : 'transparent',
+                color: active ? f.color : 'var(--tx3)',
+                cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
+              }}>
+              {f.label}
+              {count > 0 && (
+                <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '0.08rem 0.38rem', borderRadius: 999, background: active ? `${f.color}33` : 'var(--g3)', color: active ? f.color : 'var(--tx4)' }}>
+                  {count}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: '1.25rem', alignItems: 'start' }}>
-        {/* Left panel — unplanned DOs */}
+        {/* Left panel — active DOs, filtered by planning status */}
         <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.9rem 1.25rem', borderBottom: '1px solid var(--gb)' }}>
             <Package size={14} style={{ color: 'var(--accent)' }} />
-            <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--tx1)' }}>Unplanned DOs ({unplannedDOs.length})</span>
+            <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--tx1)' }}>
+              {PLAN_FILTERS.find(f => f.value === planFilter)?.label} DOs ({unplannedDOs.length})
+            </span>
           </div>
           {unplannedDOs.length === 0 ? (
             <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--tx3)', fontSize: '0.84rem' }}>
-              {isLoading ? 'Loading…' : 'No unplanned DOs — all active orders have jobs assigned.'}
+              {isLoading ? 'Loading…' : planFilter === 'unplanned' ? 'No unplanned DOs — all active orders have jobs assigned.' : `No ${planFilter === 'all' ? '' : planFilter} DOs.`}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 560, overflowY: 'auto' }}>
               {unplannedDOs.map(d => {
                 const active = d.id === selectedDoId
                 const color = DO_COLORS[d.status] ?? '#94a3b8'
+                const planStatus = planStatusOf(d.id)
+                const planColor = planStatus === 'unplanned' ? '#60a5fa' : planStatus === 'revised' ? '#a78bfa' : '#34d399'
+                const linkedJob = jobByDoId.get(d.id)
                 return (
                   <button key={d.id} onClick={() => selectDO(d.id)}
                     style={{
@@ -153,15 +223,21 @@ export const PlanningWorkbenchPage = () => {
                       borderBottom: '1px solid var(--gb)', cursor: 'pointer',
                       background: active ? 'var(--accent-dim)' : 'transparent',
                     }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4, gap: '0.4rem' }}>
                       <span style={{ fontWeight: 700, fontSize: '0.86rem', color: active ? 'var(--accent)' : 'var(--tx1)' }}>{d.do_number}</span>
-                      <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '0.14rem 0.45rem', borderRadius: 999, background: `${color}22`, color, border: `1px solid ${color}44`, textTransform: 'uppercase' }}>
-                        {DO_STATUS_LABELS[d.status as DOStatus] ?? d.status}
-                      </span>
+                      <div style={{ display: 'flex', gap: '0.3rem', flexShrink: 0 }}>
+                        <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '0.14rem 0.45rem', borderRadius: 999, background: `${planColor}22`, color: planColor, border: `1px solid ${planColor}44`, textTransform: 'uppercase' }}>
+                          {planStatus === 'revised' ? 'Plan Revised' : planStatus}
+                        </span>
+                        <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '0.14rem 0.45rem', borderRadius: 999, background: `${color}22`, color, border: `1px solid ${color}44`, textTransform: 'uppercase' }}>
+                          {DO_STATUS_LABELS[d.status as DOStatus] ?? d.status}
+                        </span>
+                      </div>
                     </div>
                     <div style={{ fontSize: '0.76rem', color: 'var(--tx3)' }}>{d.supplier?.name ?? '—'} · {d.source_service_centre?.name ?? '—'}</div>
                     <div style={{ fontSize: '0.72rem', color: 'var(--tx4)', marginTop: 2 }}>
                       {d.items?.length ?? 0} item{(d.items?.length ?? 0) !== 1 ? 's' : ''} · Expected {formatDate(d.expected_collection_date)}
+                      {linkedJob && <> · Job {linkedJob.job_number} ({JOB_STATUS_LABELS[linkedJob.status as JobStatus] ?? linkedJob.status})</>}
                     </div>
                   </button>
                 )
@@ -170,16 +246,54 @@ export const PlanningWorkbenchPage = () => {
           )}
         </div>
 
-        {/* Right panel — job assignment form */}
+        {/* Right panel — job assignment form, or a summary if this DO is already planned */}
         <div style={card}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '1rem' }}>
             <ClipboardList size={14} style={{ color: 'var(--accent)' }} />
-            <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--tx1)' }}>Assign Job</span>
+            <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--tx1)' }}>
+              {selectedDOJob ? 'Plan Summary' : 'Assign Job'}
+            </span>
           </div>
 
           {!selectedDoId ? (
             <div style={{ padding: '2rem 0', textAlign: 'center', color: 'var(--tx3)', fontSize: '0.84rem' }}>
-              Select an unplanned DO on the left to assign a job.
+              Select a DO on the left to assign or review its job.
+            </div>
+          ) : selectedDOJob ? (
+            <div>
+              <div style={{ padding: '0.75rem 1rem', borderRadius: '0.6rem', background: 'var(--g1)', border: '1px solid var(--gb)', marginBottom: '1rem' }}>
+                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--tx4)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 2 }}>Delivery Order</div>
+                <div style={{ fontSize: '0.86rem', color: 'var(--tx1)', fontWeight: 600 }}>
+                  {selectedDO?.do_number} — {selectedDO?.supplier?.name ?? '—'}
+                </div>
+              </div>
+              {selectedDOPlanStatus === 'revised' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 0.85rem', borderRadius: '0.55rem', background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.3)', marginBottom: '1rem', fontSize: '0.78rem', color: '#a78bfa' }}>
+                  <History size={13} /> This job's plan has been revised since it was first assigned.
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: '1.1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '0.76rem', color: 'var(--tx4)' }}>Job Number</span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tx1)' }}>{selectedDOJob.job_number}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '0.76rem', color: 'var(--tx4)' }}>Status</span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tx1)' }}>{JOB_STATUS_LABELS[selectedDOJob.status as JobStatus] ?? selectedDOJob.status}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '0.76rem', color: 'var(--tx4)' }}>Agent</span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tx1)' }}>{selectedDOJob.assigned_agent?.full_name ?? 'Unassigned'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '0.76rem', color: 'var(--tx4)' }}>Destination</span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tx1)' }}>{selectedDOJob.delivery_destination}</span>
+                </div>
+              </div>
+              <Link to={`/jobs/${selectedDOJob.id}`}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.65rem', borderRadius: '0.6rem', border: 'none', background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', color: '#fff', fontWeight: 700, fontSize: '0.85rem', textDecoration: 'none' }}>
+                View / Edit Job Plan <ChevronRight size={14} />
+              </Link>
             </div>
           ) : (
             <form onSubmit={handleSubmit}>
