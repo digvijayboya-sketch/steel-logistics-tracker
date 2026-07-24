@@ -24,6 +24,7 @@ export const DeliveriesPage = () => {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [tab, setTab] = useState<'pending' | 'completed'>('pending')
   const [authorising, setAuthorising] = useState<string | null>(null)
+  const [completedFilter, setCompletedFilter] = useState<'all' | 'delivered' | 'partial' | 'deviations'>('all')
 
   const isLoading = loading['deliveries'] || loading['jobs']
   const canAuthorise = isAdmin || isPlanner
@@ -37,6 +38,9 @@ export const DeliveriesPage = () => {
     : deliveries
 
   const deviations = allDeliveries.filter(d => d.destination_changed && !d.authorised_by_office)
+  const filteredDeliveries = allDeliveries.filter(d =>
+    completedFilter === 'all' ? true : completedFilter === 'deviations' ? (d.destination_changed && !d.authorised_by_office) : d.delivery_status === completedFilter
+  )
 
   const statusColor = (s: string) => ({
     delivered: '#22c55e', partial: '#fbbf24', redirected: '#fb923c', planned: '#60a5fa',
@@ -154,12 +158,43 @@ export const DeliveriesPage = () => {
 
       {/* Completed deliveries tab */}
       {tab === 'completed' && (
+        <div>
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.85rem' }}>
+            {([
+              { value: 'all', label: 'All', color: 'var(--accent)', count: allDeliveries.length },
+              { value: 'delivered', label: 'Delivered', color: '#22c55e', count: allDeliveries.filter(d => d.delivery_status === 'delivered').length },
+              { value: 'partial', label: 'Partial', color: '#fbbf24', count: allDeliveries.filter(d => d.delivery_status === 'partial').length },
+              { value: 'deviations', label: 'Deviations', color: '#fb923c', count: deviations.length },
+            ] as const).map(f => {
+              const active = completedFilter === f.value
+              return (
+                <button key={f.value} onClick={() => setCompletedFilter(f.value)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.35rem',
+                    padding: '0.38rem 0.9rem', borderRadius: 999, fontSize: '0.76rem', fontWeight: 600,
+                    border: active ? `1px solid ${f.color}` : '1px solid var(--gb)',
+                    background: active ? `${f.color}22` : 'transparent',
+                    color: active ? f.color : 'var(--tx3)',
+                    cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
+                  }}>
+                  {f.label}
+                  {f.count > 0 && (
+                    <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '0.08rem 0.38rem', borderRadius: 999, background: active ? `${f.color}33` : 'var(--g3)', color: active ? f.color : 'var(--tx4)' }}>
+                      {f.count}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
         <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', overflow: 'hidden', boxShadow: 'var(--sh-card)' }}>
-          {!isLoading && allDeliveries.length === 0 ? (
-            <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--tx3)', fontSize: '0.88rem' }}>No deliveries logged yet</div>
+          {!isLoading && filteredDeliveries.length === 0 ? (
+            <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--tx3)', fontSize: '0.88rem' }}>
+              {completedFilter === 'all' ? 'No deliveries logged yet' : `No ${completedFilter} deliveries`}
+            </div>
           ) : (
             <div>
-              {allDeliveries.map(d => {
+              {filteredDeliveries.map(d => {
                 const job = jobs.find(j => j.id === d.job_id)
                 const isOpen = expanded === d.id
                 const sc = statusColor(d.delivery_status)
@@ -231,6 +266,7 @@ export const DeliveriesPage = () => {
               })}
             </div>
           )}
+        </div>
         </div>
       )}
     </PageShell>

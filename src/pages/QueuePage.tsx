@@ -12,6 +12,14 @@ const PageShell = ({ children }: { children: React.ReactNode }) => (
   </div>
 )
 
+type QueueFilter = 'all' | 'queued' | 'partial' | 'complete'
+const FILTERS: { value: QueueFilter; label: string; color: string }[] = [
+  { value: 'all',      label: 'All',      color: 'var(--accent)' },
+  { value: 'queued',   label: 'Queued',   color: '#60a5fa' },
+  { value: 'partial',  label: 'Partial',  color: '#fbbf24' },
+  { value: 'complete', label: 'Complete', color: '#34d399' },
+]
+
 export const QueuePage = () => {
   const navigate = useNavigate()
   const { user } = useAuthStore()
@@ -20,10 +28,18 @@ export const QueuePage = () => {
   useEffect(() => { fetchQueueUpdates(); fetchJobs() }, [])
 
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [filter, setFilter] = useState<QueueFilter>('all')
 
   const isLoading = loading['queue'] || loading['jobs']
 
-  const grouped = queueUpdates.reduce<Record<string, typeof queueUpdates>>((acc, q) => {
+  const stageOf = (q: typeof queueUpdates[0]): QueueFilter =>
+    q.processing_completed_at ? 'complete' : q.processing_started_at ? 'partial' : 'queued'
+
+  const filteredUpdates = filter === 'all' ? queueUpdates : queueUpdates.filter(q => stageOf(q) === filter)
+  const counts = { all: queueUpdates.length, queued: 0, partial: 0, complete: 0 } as Record<QueueFilter, number>
+  for (const q of queueUpdates) counts[stageOf(q)]++
+
+  const grouped = filteredUpdates.reduce<Record<string, typeof queueUpdates>>((acc, q) => {
     const key = q.service_centre?.name ?? 'Unknown'
     if (!acc[key]) acc[key] = []
     acc[key].push(q)
@@ -95,8 +111,35 @@ export const QueuePage = () => {
         </div>
       )}
 
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1.1rem' }}>
+        {FILTERS.map(f => {
+          const active = filter === f.value
+          const count = counts[f.value]
+          return (
+            <button key={f.value} onClick={() => setFilter(f.value)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.35rem',
+                padding: '0.38rem 0.9rem', borderRadius: 999, fontSize: '0.76rem', fontWeight: 600,
+                border: active ? `1px solid ${f.color}` : '1px solid var(--gb)',
+                background: active ? `${f.color}22` : 'transparent',
+                color: active ? f.color : 'var(--tx3)',
+                cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
+              }}>
+              {f.label}
+              {count > 0 && (
+                <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '0.08rem 0.38rem', borderRadius: 999, background: active ? `${f.color}33` : 'var(--g3)', color: active ? f.color : 'var(--tx4)' }}>
+                  {count}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
       {!isLoading && Object.keys(grouped).length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '3rem', background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', color: 'var(--tx3)' }}>No queue entries yet</div>
+        <div style={{ textAlign: 'center', padding: '3rem', background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.85rem', color: 'var(--tx3)' }}>
+          {filter === 'all' ? 'No queue entries yet' : `No jobs currently ${filter}`}
+        </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(Math.max(Object.keys(grouped).length, 1), 3)}, 1fr)`, gap: '1rem', alignItems: 'start' }}>
           {Object.entries(grouped).map(([scName, entries]) => (
