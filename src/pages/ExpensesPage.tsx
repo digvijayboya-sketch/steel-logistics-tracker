@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useRole } from '@/hooks/useRole'
 import { useAuthStore } from '@/store/appStore'
 import { useDataStore } from '@/store/dataStore'
@@ -21,12 +21,16 @@ export const ExpensesPage = () => {
   const { isAgent, canApprove } = useRole()
   const { user } = useAuthStore()
   const navigate = useNavigate()
+  const [sp] = useSearchParams()
   const { expenses, jobs, loading, error, fetchExpenses, fetchJobs, reviewExpense } = useDataStore()
 
   useEffect(() => { fetchExpenses(); fetchJobs() }, [])
 
+  const initialFilter = sp.get('status')
   const [search,       setSearch]       = useState('')
-  const [filter,       setFilter]       = useState<Filter>('all')
+  const [filter,       setFilter]       = useState<Filter>(
+    (['all','pending','approved','rejected'] as Filter[]).includes(initialFilter as Filter) ? (initialFilter as Filter) : 'all'
+  )
   const [expandedId,   setExpandedId]   = useState<string | null>(null)
   const [reviewNotes,  setReviewNotes]  = useState<Record<string, string>>({})
   const [reviewing,    setReviewing]    = useState<string | null>(null)

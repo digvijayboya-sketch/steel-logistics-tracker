@@ -13,7 +13,7 @@ import { formatINR, formatDate, formatDateTime } from '@/lib/utils'
 import {
   ArrowLeft, Briefcase, MapPin, Calendar, User, Package, ClipboardList,
   Clock, CheckCircle2, Receipt, Truck, AlertTriangle, Building2,
-  XCircle, Loader2,
+  XCircle, Loader2, PlusCircle, LogIn,
 } from 'lucide-react'
 import {
   SERVICE_TYPE_LABELS, EXPENSE_CATEGORY_LABELS, SETTLEMENT_LABELS, JOB_STATUS_LABELS,
@@ -63,7 +63,7 @@ const ConfirmModal = ({
 export const JobDetailPage = () => {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { isAdmin, isPlanner, isAgent } = useRole()
+  const { isAdmin, isPlanner, isAgent, user } = useRole()
 
   const [job, setJob] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -128,7 +128,10 @@ export const JobDetailPage = () => {
   )
 
   const isCancelled = job.status === 'cancelled'
-  const canCancel = (isAdmin || isPlanner) && !isCancelled && !['delivered'].includes(job.status)
+  const isDelivered = job.status === 'delivered'
+  const canCancel = (isAdmin || isPlanner) && !isCancelled && !isDelivered
+  // Agents can only log against their own assigned job; office roles can log on behalf of any agent.
+  const canLogAction = !isCancelled && !isDelivered && (isAdmin || isPlanner || (isAgent && job.assigned_agent?.id === user?.id))
   const currentStepIdx = isCancelled ? -1 : STEP_STATUSES.indexOf(job.status)
   const totalExpenses = (job.expenses ?? []).reduce((a: number, e: any) => a + Number(e.amount_inr), 0)
   const pendingExpenses = (job.expenses ?? []).filter((e: any) => e.status === 'pending')
@@ -180,6 +183,24 @@ export const JobDetailPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Quick actions — pre-fills the job on the target log form */}
+      {canLogAction && (
+        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <button onClick={() => navigate(`/expenses/log?job=${job.id}`)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', borderRadius: '0.6rem', border: '1px solid var(--gb)', background: 'var(--g2)', color: 'var(--tx2)', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+            <PlusCircle size={14} /> Add Expense
+          </button>
+          <button onClick={() => navigate(`/queue/log?job=${job.id}`)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', borderRadius: '0.6rem', border: '1px solid var(--gb)', background: 'var(--g2)', color: 'var(--tx2)', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+            <LogIn size={14} /> Check In at SC
+          </button>
+          <button onClick={() => navigate(`/deliveries/log?job=${job.id}`)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', borderRadius: '0.6rem', border: 'none', background: 'linear-gradient(135deg,#2dd4bf,#0d9488)', color: '#07211e', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+            <Truck size={14} /> Log Delivery
+          </button>
+        </div>
+      )}
 
       {/* Cancelled banner */}
       {isCancelled && (

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
 import { useDataStore } from '@/store/dataStore'
 import { ArrowLeft, Clock, MapPin, Save, RefreshCw, CheckCircle2, XCircle } from 'lucide-react'
@@ -45,6 +45,7 @@ type SyncResult = { key: string; jobId: string; ok: boolean; message: string }
 
 export const LogQueuePage = () => {
   const navigate = useNavigate()
+  const [sp] = useSearchParams()
   const { user } = useAuthStore()
   const { jobs, serviceCentres, profiles, fetchJobs, fetchLookups, addQueueUpdate, updateJobStatus } = useDataStore()
 
@@ -55,7 +56,7 @@ export const LogQueuePage = () => {
   const myJobs     = isAdmin ? activeJobs : activeJobs.filter(j=>j.assigned_agent_id===user?.id)
 
   const [form, setForm] = useState({
-    job_id: '',
+    job_id: sp.get('job') ?? '',
     logged_as: user?.id??'',
     service_centre_id: '',
     service_type: '' as ServiceType|'',

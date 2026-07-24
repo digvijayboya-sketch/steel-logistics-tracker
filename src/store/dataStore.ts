@@ -137,13 +137,19 @@ interface DataState {
 const setL = (key: string, val: boolean) =>
   (s: DataState): Partial<DataState> => ({ loading: { ...s.loading, [key]: val } })
 
+// Starting a fetch also clears any previous error — otherwise a failure on one
+// page's fetch leaves a stale error banner showing on every other page until
+// something else happens to overwrite it (error is a single global slot).
+const startFetch = (key: string) =>
+  (s: DataState): Partial<DataState> => ({ loading: { ...s.loading, [key]: true }, error: null })
+
 export const useDataStore = create<DataState>((set, get) => ({
   suppliers: [], serviceCentres: [], customers: [], profiles: [], allProfiles: [],
   dos: [], jobs: [], expenses: [], queueUpdates: [], deliveries: [], auditLog: [],
   loading: {}, error: null,
 
   fetchLookups: async () => {
-    set(setL('lookups', true))
+    set(startFetch('lookups'))
     try {
       const [suppliers, serviceCentres, customers, profiles] = await Promise.all([
         apiGetSuppliers(), apiGetServiceCentres(), apiGetCustomers(), apiGetAgents(),
@@ -160,7 +166,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   fetchAllProfiles: async () => {
-    set(setL('allProfiles', true))
+    set(startFetch('allProfiles'))
     try {
       set({ allProfiles: await apiGetAllProfiles() as unknown as Profile[] })
     } catch (e: unknown) {
@@ -169,13 +175,13 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   fetchDOs: async () => {
-    set(setL('dos', true))
+    set(startFetch('dos'))
     try { set({ dos: await apiGetDOs() as unknown as DeliveryOrder[] }) }
     catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
     finally { set(setL('dos', false)) }
   },
   fetchDO: async (id) => {
-    set(setL(`do_${id}`, true))
+    set(startFetch(`do_${id}`))
     try {
       const d = await apiGetDO(id) as unknown as DeliveryOrder
       set(s => ({ dos: s.dos.some(x => x.id === id) ? s.dos.map(x => x.id === id ? d : x) : [...s.dos, d] }))
@@ -184,13 +190,13 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   fetchJobs: async () => {
-    set(setL('jobs', true))
+    set(startFetch('jobs'))
     try { set({ jobs: await apiGetJobs() as unknown as Job[] }) }
     catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
     finally { set(setL('jobs', false)) }
   },
   fetchJob: async (id) => {
-    set(setL(`job_${id}`, true))
+    set(startFetch(`job_${id}`))
     try {
       const j = await apiGetJob(id) as unknown as Job
       set(s => ({ jobs: s.jobs.some(x => x.id === id) ? s.jobs.map(x => x.id === id ? j : x) : [...s.jobs, j] }))
@@ -199,25 +205,25 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   fetchQueueUpdates: async () => {
-    set(setL('queue', true))
+    set(startFetch('queue'))
     try { set({ queueUpdates: await apiGetQueueUpdates() as unknown as QueueUpdate[] }) }
     catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
     finally { set(setL('queue', false)) }
   },
   fetchExpenses: async () => {
-    set(setL('expenses', true))
+    set(startFetch('expenses'))
     try { set({ expenses: await apiGetExpenses() as unknown as Expense[] }) }
     catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
     finally { set(setL('expenses', false)) }
   },
   fetchDeliveries: async () => {
-    set(setL('deliveries', true))
+    set(startFetch('deliveries'))
     try { set({ deliveries: await apiGetDeliveries() as unknown as Delivery[] }) }
     catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
     finally { set(setL('deliveries', false)) }
   },
   fetchAuditLog: async () => {
-    set(setL('auditLog', true))
+    set(startFetch('auditLog'))
     try { set({ auditLog: await apiGetAuditLog() as unknown as AuditLogEntry[] }) }
     catch (e: unknown) { set({ error: e instanceof Error ? e.message : 'Failed' }) }
     finally { set(setL('auditLog', false)) }

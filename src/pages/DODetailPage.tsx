@@ -12,7 +12,7 @@ import type { DOStatus, JobStatus } from '@/types'
 import { formatDate } from '@/lib/utils'
 import {
   ClipboardList, ChevronLeft, Package, User, ChevronRight,
-  XCircle, Trash2, AlertTriangle, Loader2,
+  XCircle, Trash2, AlertTriangle, Loader2, Scale,
 } from 'lucide-react'
 
 const DO_COLORS: Record<DOStatus, string> = {
@@ -203,6 +203,12 @@ export const DODetailPage = () => {
           </span>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {isAdmin && (
+            <button onClick={() => navigate(`/reconciliation?do=${id}`)}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1.1rem', borderRadius: '0.6rem', border: '1px solid var(--gb)', background: 'var(--g2)', color: 'var(--tx2)', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer' }}>
+              <Scale size={14} /> Reconciliation
+            </button>
+          )}
           {canPlan && (
             <button onClick={() => navigate(`/planning?do=${id}`)}
               style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1.1rem', borderRadius: '0.6rem', border: 'none', background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', color: '#fff', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer', boxShadow: '0 4px 14px rgba(124,58,237,0.3)' }}>

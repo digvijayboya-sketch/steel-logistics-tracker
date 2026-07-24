@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useDataStore } from '@/store/dataStore'
 import { formatINR, formatDate, formatDateTime, downloadCSV } from '@/lib/utils'
 import { FileText, Scale, Receipt, CheckCircle2, Clock, Download, Loader2, ChevronRight } from 'lucide-react'
@@ -19,11 +19,12 @@ const PageShell = ({ children }: { children: React.ReactNode }) => (
 )
 
 export const ReconciliationPage = () => {
+  const [sp] = useSearchParams()
   const { dos, jobs, expenses, loading, fetchDOs, fetchJobs, fetchExpenses } = useDataStore()
 
   useEffect(() => { fetchDOs(); fetchJobs(); fetchExpenses() }, [])
 
-  const [selectedDoId, setSelectedDoId] = useState('')
+  const [selectedDoId, setSelectedDoId] = useState(sp.get('do') ?? '')
 
   const isLoading = loading['dos'] || loading['jobs'] || loading['expenses']
 

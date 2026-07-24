@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
 import { useDataStore } from '@/store/dataStore'
 import { ArrowLeft, Camera, MapPin, Receipt, Loader2, X } from 'lucide-react'
@@ -29,6 +29,7 @@ const CATEGORY_TILES: { value: ExpenseCategory; label: string }[] = [
 
 export const LogExpensePage = () => {
   const navigate = useNavigate()
+  const [sp] = useSearchParams()
   const { user } = useAuthStore()
   const { jobs, profiles, fetchJobs, fetchLookups, addExpense } = useDataStore()
 
@@ -41,7 +42,7 @@ export const LogExpensePage = () => {
   const myJobs     = isAdmin ? activeJobs : activeJobs.filter(j=>j.assigned_agent_id===user?.id)
 
   const [form, setForm] = useState({
-    job_id: '',
+    job_id: sp.get('job') ?? '',
     logged_as: user?.id??'',   // admin can log on behalf of any agent
     category: '' as ExpenseCategory|'',
     amount_inr: '',

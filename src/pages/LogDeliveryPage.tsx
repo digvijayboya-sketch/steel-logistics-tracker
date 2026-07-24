@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '@/store/appStore'
 import { useDataStore } from '@/store/dataStore'
 import { ArrowLeft, Camera, MapPin, Truck, AlertTriangle, CheckCircle2, X, Loader2 } from 'lucide-react'
@@ -20,6 +20,7 @@ const lbl: React.CSSProperties = {
 
 export const LogDeliveryPage = () => {
   const navigate = useNavigate()
+  const [sp] = useSearchParams()
   const { user } = useAuthStore()
   const { jobs, profiles, fetchJobs, fetchLookups, fetchJob, addDelivery, updateDOStatus } = useDataStore()
 
@@ -30,7 +31,7 @@ export const LogDeliveryPage = () => {
   const myJobs     = isAdmin ? activeJobs : activeJobs.filter(j=>j.assigned_agent_id===user?.id)
 
   const [form, setForm] = useState({
-    job_id: '',
+    job_id: sp.get('job') ?? '',
     logged_as: user?.id??'',
     vehicle_number: '',
     delivery_address: '',
